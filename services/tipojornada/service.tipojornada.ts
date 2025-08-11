@@ -4,18 +4,18 @@ import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getAllTiposJornada(){
+export async function getTiposJornada(){
     try {
-        const textProyectos = `
+        const texto = `
             SELECT 
-            id AS value, 
-            nombre AS label 
+            id, 
+            nombre
             FROM tipojornada
         `;
-        const proyectosResult = await client.query(textProyectos);
-        return proyectosResult.rows;
+        const resultado = await client.query(texto);
+        return resultado.rows;
     } catch (error) {
-        console.error("Error en getAllTiposJornada: ", error);
+        console.error("Error en getTiposJornada: ", error);
         throw error;
     };
 };

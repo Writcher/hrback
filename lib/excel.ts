@@ -21,7 +21,7 @@ export type idForaneas = {
 };
 
 export type jornadasData = {
-    map: jornadasMap;
+    map: { empleados: jornadasMap, isComplete: boolean };
     id_proyecto: number;
     id_tipojornada: number;
 };

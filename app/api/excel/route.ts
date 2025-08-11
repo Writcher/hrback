@@ -1,7 +1,7 @@
 "use server"
 
 import { NextRequest, NextResponse } from "next/server";
-import { insertJornada, processExcelFile } from "@/services/excel/service.excel";
+import { insertJornada, processExcel } from "@/services/excel/service.excel";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,14 +24,14 @@ export async function POST(req: NextRequest) {
     };
   
     // Procesar archivo
-    const buffer = await file.arrayBuffer();
-    const empleadosMap = await processExcelFile(buffer);
+    const processExcelParams = await file.arrayBuffer();
+    const empleadosMap = await processExcel(processExcelParams);
 
     // Cargar jornadas
     const insertJornadaParams = {map: empleadosMap, id_proyecto, id_tipojornada}
-    await insertJornada(insertJornadaParams);
+    const importacion = await insertJornada(insertJornadaParams);
 
-    return NextResponse.json({ message: "Archivo procesado correctamente." }, { status: 200 });
+    return NextResponse.json({ message: "Archivo procesado correctamente.", importacion: importacion.idImportacion, completa: importacion.estaCompleta }, { status: 200 });
   } catch (error) {
     console.error("Error procesando Excel:", error);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
