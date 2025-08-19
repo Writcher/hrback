@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
             );
         };
 
-        const getEmpleadosParams = {
+        const getEmpleadosParametros = {
             busquedaNombre,
             filtroProyecto,
             pagina,
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
             ordenDireccion
         };
 
-        const respuesta = await getEmpleados(getEmpleadosParams);
+        const respuesta = await getEmpleados(getEmpleadosParametros);
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {

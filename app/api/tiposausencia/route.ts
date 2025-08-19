@@ -1,11 +1,11 @@
 "use server";
 
-import { getTiposJornada } from "@/services/tipojornada/service.tipojornada";
+import { getTiposAusencia } from "@/services/tipoausencia/service.tipoausencia";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
     try {
-        const respuesta = await getTiposJornada();
+        const respuesta = await getTiposAusencia();
         
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {

@@ -1,12 +1,12 @@
 "use server";
 
-export type instancesVerification = {
+export type verificarInstanciasParametros = {
     año: number;
     mes: number;
     quincena: number;
-}
+};
 
-export type jornadasMap = Map<string, {
+export type empleadosJornada = Map<string, {
     nombre: string;
     registros: {
         fecha: string;
@@ -15,13 +15,13 @@ export type jornadasMap = Map<string, {
     }[];
 }>;
 
-export type idForaneas = {
-    mesId: number;
-    quincenaId: number;
+export type clavesForaneas = {
+    id_mes: number;
+    id_quincena: number;
 };
 
-export type jornadasData = {
-    map: { empleados: jornadasMap, isComplete: boolean };
+export type jornadasParametros = {
+    empleadosJornadas: { empleadosJornada: empleadosJornada, importacionCompleta: boolean };
     id_proyecto: number;
     id_tipojornada: number;
 };

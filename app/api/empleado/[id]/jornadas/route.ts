@@ -5,10 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: Promise<{ id: number }> }
 ) {
     try {
-        const { id: idEmpleado } = await params;
+        const { id: id_empleado } = await params;
         const url = new URL(request.url);
         const filtroMes = Number(url.searchParams.get("filtroMes"));
         const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
@@ -28,8 +28,8 @@ export async function GET(
             );
         };
 
-        const getEmpleadoJornadasParams = {
-            idEmpleado: Number(idEmpleado),
+        const getEmpleadoJornadasParametros = {
+            id_empleado: Number(id_empleado),
             filtroMes,
             filtroQuincena,
             filtroMarcasIncompletas,
@@ -37,7 +37,7 @@ export async function GET(
             filasPorPagina
         };
 
-        const respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParams);
+        const respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {

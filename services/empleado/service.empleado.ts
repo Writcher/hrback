@@ -1,11 +1,11 @@
 "use server"
 
-import { getEmpleadosParams } from "@/lib/empleado";
+import { getEmpleadosParametros } from "@/lib/empleado";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getEmpleados(params: getEmpleadosParams) {
+export async function getEmpleados(params: getEmpleadosParametros) {
     try {
         const offset = (params.pagina) * params.filasPorPagina;
         const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo'];
@@ -92,8 +92,6 @@ export async function getEmpleados(params: getEmpleadosParams) {
         `;
         texto2 += textoFiltro2;
         const resultadoConteo = await client.query(texto2, valores2);
-
-        console.log(resultadoConteo.rows[0])
 
         return {
             empleados: resultado.rows,

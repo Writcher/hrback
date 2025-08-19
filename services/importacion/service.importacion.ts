@@ -1,11 +1,11 @@
 "use server"
 
-import { getImportacionesParams } from "@/lib/importacion";
+import { getImportacionesParametros } from "@/lib/importacion";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getImportaciones(params: getImportacionesParams) {
+export async function getImportaciones(params: getImportacionesParametros) {
     try {
         const textoEstadosImportacion = `
             SELECT *
@@ -98,6 +98,33 @@ export async function getImportaciones(params: getImportacionesParams) {
         };
     } catch (error) {
         console.error("Error en getImportaciones: ", error);
+        throw error;
+    };
+};
+
+export async function setImportacionCompleta(id: number) {
+    try {  
+        const textoEstadoImportacion = `
+            SELECT id
+            FROM "estadoimportacion"
+            WHERE nombre ILIKE 'Completa'
+        `;
+
+        const estadoRaw = await client.query(textoEstadoImportacion);
+        const estado = estadoRaw.rows[0].id;
+
+        const texto = `
+            UPDATE importacion
+            SET id_estadoimportacion = $1
+            WHERE id = $2
+        `;
+        const valores = [estado, id];
+
+        await client.query(texto, valores);
+        
+        return;
+    } catch (error) {
+        console.error("Error en setImportacionCompleta: ", error);
         throw error;
     };
 };

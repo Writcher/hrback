@@ -22,14 +22,14 @@ export async function GET(request: NextRequest) {
             );
         };
 
-        const getImportacionesParams = {
+        const getImportacionesParametros = {
             filtroIncompletas,
             filtroProyecto,
             pagina,
             filasPorPagina
         };
 
-        const respuesta = await getImportaciones(getImportacionesParams);
+        const respuesta = await getImportaciones(getImportacionesParametros);
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {

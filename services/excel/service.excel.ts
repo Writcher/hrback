@@ -1,94 +1,87 @@
 "use server";
 
-import { instancesVerification, jornadasData } from "../../lib/excel";
+import { verificarInstanciasParametros, jornadasParametros } from "../../lib/excel";
 import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function verifyExistenciaInstancias(data: instancesVerification) {
+export async function verifyExistenciaInstancias(params: verificarInstanciasParametros) {
   try {
     // Año
-    let añoId: number;
-    const textAño = `
+    let id_año: number;
+    const textoAño = `
           SELECT valor
           FROM "año"
           WHERE valor = $1    
         `;
-    const valuesAño = [data.año];
-    const añoResult = await client.query(textAño, valuesAño);
-    if (añoResult.rowCount === 0) {
-      const textAñoInsert = `
+    const valoresAño = [params.año];
+    const resultadoAño = await client.query(textoAño, valoresAño);
+    if (resultadoAño.rowCount === 0) {
+      const textoInsertAño = `
               INSERT INTO "año" (valor)
               VALUES ($1)
               RETURNING valor
             `;
-      const valuesAñoInsert = [data.año];
-      const resultAñoInsert = await client.query(textAñoInsert, valuesAñoInsert);
-      añoId = resultAñoInsert.rows[0].valor;
-      console.log(`   ✅ Instancia de Año ${data.año} creada.`);
+      const valoresInsertAño = [params.año];
+      const resultadoInsertAño = await client.query(textoInsertAño, valoresInsertAño);
+      id_año = resultadoInsertAño.rows[0].valor;
     } else {
-      añoId = añoResult.rows[0].valor;
-      console.log(`   ✅ Instancia de Año ${data.año} ya existe.`);
+      id_año = resultadoAño.rows[0].valor;
     };
 
     // Mes
-    let mesId: number;
-    const textMes = `
+    let id_mes: number;
+    const textoMes = `
           SELECT id
           FROM "mes"
           WHERE mes = $1 AND id_año = $2
         `;
-    const valuesMes = [data.mes, añoId];
-    const mesResult = await client.query(textMes, valuesMes);
-    if (mesResult.rowCount === 0) {
-      const textMesInsert = `
+    const valoresMes = [params.mes, id_año];
+    const resultadoMes = await client.query(textoMes, valoresMes);
+    if (resultadoMes.rowCount === 0) {
+      const textoInsertMes = `
               INSERT INTO "mes" (mes, id_año)
               VALUES ($1, $2)
               RETURNING id
             `;
-      const valuesMesInsert = [data.mes, añoId];
-      const resultMesInsert = await client.query(textMesInsert, valuesMesInsert);
-      mesId = resultMesInsert.rows[0].id;
-      console.log(`   ✅ Instancia de Mes ${data.mes} de ${data.año} creada.`);
+      const valoresInsertMes = [params.mes, id_año];
+      const resultadoInsertMes = await client.query(textoInsertMes, valoresInsertMes);
+      id_mes = resultadoInsertMes.rows[0].id;
     } else {
-      mesId = mesResult.rows[0].id;
-      console.log(`   ✅ Instancia de Mes ${data.mes} de ${data.año} ya existe.`);
+      id_mes = resultadoMes.rows[0].id;
     };
 
     // Quincena
-    let quincenaId: number;
-    const textQuincena = `
+    let id_quincena: number;
+    const textoQuincena = `
           SELECT id
           FROM "quincena"
           WHERE quincena = $1 AND id_mes = $2
         `;
-    const valuesQuincena = [data.quincena, mesId];
-    const quincenaResult = await client.query(textQuincena, valuesQuincena);
-    if (quincenaResult.rowCount === 0) {
+    const valoresQuincena = [params.quincena, id_mes];
+    const resultadoQuincena = await client.query(textoQuincena, valoresQuincena);
+    if (resultadoQuincena.rowCount === 0) {
       const textQuincenaInsert = `
               INSERT INTO "quincena" (quincena, id_mes)
               VALUES ($1, $2)
               RETURNING id
             `;
-      const valuesQuincenaInsert = [data.quincena, mesId];
-      const resultQuincenaInsert = await client.query(textQuincenaInsert, valuesQuincenaInsert);
-      quincenaId = resultQuincenaInsert.rows[0].id;
-      console.log(`   ✅ Instancia de Quincena ${data.quincena} de Mes ${data.mes} de ${data.año} creada.`);
+      const valoresInsertQuincena = [params.quincena, id_mes];
+      const resultadoInsertQuincena = await client.query(textQuincenaInsert, valoresInsertQuincena);
+      id_quincena = resultadoInsertQuincena.rows[0].id;
     } else {
-      quincenaId = quincenaResult.rows[0].id;
-      console.log(`   ✅ Instancia de Quincena ${data.quincena} de Mes ${data.mes} de ${data.año} ya existe.`);
+      id_quincena = resultadoQuincena.rows[0].id;
     };
 
-    const response = { mesId, quincenaId };
-    return response;
-
+    return { id_mes, id_quincena };
   } catch (error) {
     console.error("Error en verifyInstancesExistance: ", error);
     throw error;
   };
 };
 
+//Esta la hizo GPT, no tocar que por ahora anda
 export async function processExcel(buffer: ArrayBuffer) {
   // Función mejorada para convertir número serial Excel a JS Date
   function excelDateToJSDate(serial: number): Date {
@@ -219,14 +212,11 @@ export async function processExcel(buffer: ArrayBuffer) {
 
           // Si están a menos de 5 minutos de distancia
           if (diffMinutes <= TOLERANCE_MINUTES) {
-            console.log(`🔍 Detectada marca duplicada para ${current.fecha}:`);
-            console.log(`   ${current.hora} (${current.tipo}) vs ${next.hora} (${next.tipo})`);
 
             // Lógica de resolución de conflictos:
 
             // Caso 1: Misma hora exacta - tomar la primera
             if (diffMinutes === 0) {
-              console.log(`   ✅ Resuelto: Tomando primera marca (${current.tipo})`);
               cleaned.push(current);
               i++; // Saltar la siguiente
               continue;
@@ -241,18 +231,15 @@ export async function processExcel(buffer: ArrayBuffer) {
                 // Si ya hay una entrada, la siguiente debería ser salida
                 if (lastEntry.tipo === 'ENTRADA') {
                   const salidaRecord = current.tipo === 'SALIDA' ? current : next;
-                  console.log(`   ✅ Resuelto: Tomando SALIDA (${salidaRecord.hora})`);
                   cleaned.push(salidaRecord);
                 } else {
                   // Si ya hay una salida, la siguiente debería ser entrada
                   const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
-                  console.log(`   ✅ Resuelto: Tomando ENTRADA (${entradaRecord.hora})`);
                   cleaned.push(entradaRecord);
                 };
               } else {
                 // Si no hay contexto previo, tomar ENTRADA
                 const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
-                console.log(`   ✅ Resuelto: Tomando ENTRADA (${entradaRecord.hora})`);
                 cleaned.push(entradaRecord);
               };
               i++; // Saltar la siguiente
@@ -260,7 +247,6 @@ export async function processExcel(buffer: ArrayBuffer) {
             };
 
             // Caso 3: Mismo tipo - tomar la primera
-            console.log(`   ✅ Resuelto: Mismo tipo, tomando primera marca (${current.hora})`);
             cleaned.push(current);
             i++; // Saltar la siguiente
             continue;
@@ -349,55 +335,35 @@ export async function processExcel(buffer: ArrayBuffer) {
   let globalIsComplete = true;
 
   for (const [idEmpleado, data] of empleadosMap.entries()) {
-    console.log(`🧹 Limpiando registros para empleado ${data.nombre} (ID: ${idEmpleado})`);
-    const originalCount = data.registros.length;
     data.registros = cleanRegistros(data.registros);
-    const cleanedCount = data.registros.length;
-
-    if (originalCount !== cleanedCount) {
-      console.log(`   📊 Registros: ${originalCount} → ${cleanedCount} (eliminados: ${originalCount - cleanedCount})`);
-    }
 
     // Validar si los registros están completos
     const isEmployeeComplete = validateCompleteRecords(data.registros);
 
     if (!isEmployeeComplete) {
       globalIsComplete = false;
-      console.log(`   ⚠️ REGISTROS INCOMPLETOS detectados`);
-    } else {
-      console.log(`   ✅ Todos los registros están completos`);
-    }
+    };
   };
-
-  // Log del resultado global
-  if (globalIsComplete) {
-    console.log(`🎉 TODOS los empleados tienen registros completos`);
-  } else {
-    console.log(`⚠️ Algunos empleados tienen registros incompletos`);
-  }
 
   return {
-    empleados: empleadosMap,
-    isComplete: globalIsComplete
+    empleadosJornada: empleadosMap,
+    importacionCompleta: globalIsComplete
   };
 };
+//
 
-export async function insertJornada(data: jornadasData) {
+export async function insertJornada(params: jornadasParametros) {
   try {
-    const { map, id_proyecto, id_tipojornada } = data;
+    const { empleadosJornadas, id_proyecto, id_tipojornada } = params;
     let contador = 0;
     let fechaMemoria: Date = new Date(0);
     let quincenaMemoria: number = 0;
-    let mesId: number = 0;
-    let quincenaId: number = 0;
-
-    console.log(`   ✏️  Escribiendo jornadas.`);
+    let id_mes: number = 0;
+    let id_quincena: number = 0;
 
     const textoEstadosImportacion = `
       SELECT *
       FROM "estadoimportacion"
-      WHERE nombre ILIKE 'Completa'
-        OR nombre ILIKE 'Incompleta'
     `;
 
     const { rows: estados } = await client.query(textoEstadosImportacion);
@@ -412,39 +378,39 @@ export async function insertJornada(data: jornadasData) {
     `;
     const valoresImportacionCompleta = [importacionCompleta.id, id_proyecto];
     const valoresImportacionIncompleta = [importacionIncompleta.id, id_proyecto];
-    let idImportacionRaw;
+    let importacionRaw;
     
-    if (map.isComplete) {
-      idImportacionRaw = await client.query(textoImportacion, valoresImportacionCompleta)
+    if (empleadosJornadas.importacionCompleta) {
+      importacionRaw = await client.query(textoImportacion, valoresImportacionCompleta)
     } else {
-      idImportacionRaw = await client.query(textoImportacion, valoresImportacionIncompleta)
+      importacionRaw = await client.query(textoImportacion, valoresImportacionIncompleta)
     };
 
-    const idImportacion = idImportacionRaw.rows[0].id;
-    const estaCompleta = map.isComplete;
+    const id_importacion = importacionRaw.rows[0].id;
+    const estaCompleta = empleadosJornadas.importacionCompleta;
 
-    for (const [idReloj, { nombre, registros }] of map.empleados.entries()) {
+    for (const [id_reloj, { nombre, registros }] of empleadosJornadas.empleadosJornada.entries()) {
 
-      let idEmpleado: number;
-      const textEmpleado = `
+      let id_empleado: number;
+      const textoEmpleado = `
         SELECT id
         FROM "empleado"
         WHERE id_reloj = $1 AND id_proyecto = $2
       `;
-      const valuesEmpleado = [idReloj, id_proyecto];
-      const empleadoResult = await client.query(textEmpleado, valuesEmpleado);
+      const valoresEmpleado = [id_reloj, id_proyecto];
+      const resultadoEmpleado = await client.query(textoEmpleado, valoresEmpleado);
 
-      if (empleadoResult.rowCount === 0) {
-        const textEmpleadoInsert = `
+      if (resultadoEmpleado.rowCount === 0) {
+        const textoInsertEmpleado = `
             INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto)
             VALUES ($1, $2, $3)
             RETURNING id
           `;
-        const valuesEmpleadoInsert = [nombre, idReloj, id_proyecto];
-        const resultEmpleadoInsert = await client.query(textEmpleadoInsert, valuesEmpleadoInsert);
-        idEmpleado = resultEmpleadoInsert.rows[0].id;
+        const valoresInsertEmpleado = [nombre, id_reloj, id_proyecto];
+        const resultadoInsertempleado = await client.query(textoInsertEmpleado, valoresInsertEmpleado);
+        id_empleado = resultadoInsertempleado.rows[0].id;
       } else {
-        idEmpleado = empleadoResult.rows[0].id;
+        id_empleado = resultadoEmpleado.rows[0].id;
       };
 
       const jornadasPorFecha: Map<string, Array<{ tipo: string; hora: string; orden: number }>> = new Map();
@@ -470,35 +436,35 @@ export async function insertJornada(data: jornadasData) {
         const dia = fechaObjeto.getDate();
         const quincena = dia <= 15 ? 1 : 2;
 
-        if (fechaMemoria.getFullYear() !== año || fechaMemoria.getMonth() + 1 !== mes || mesId === 0 || quincenaId === 0 || quincenaMemoria !== quincena) {
+        if (fechaMemoria.getFullYear() !== año || fechaMemoria.getMonth() + 1 !== mes || id_mes === 0 || id_quincena === 0 || quincenaMemoria !== quincena) {
           fechaMemoria = fechaObjeto;
           quincenaMemoria = quincena;
           const params = { año, mes, quincena };
           const foreignIds = await verifyExistenciaInstancias(params);
-          mesId = foreignIds.mesId;
-          quincenaId = foreignIds.quincenaId;
+          id_mes = foreignIds.id_mes;
+          id_quincena = foreignIds.id_quincena;
         }
 
         const jornadas = emparejarEntradaSalida(registrosFecha);
 
         for (const jornada of jornadas) {
           if (jornada.entrada || jornada.salida) {
-            const textJornadaInsert = `
+            const textoInsertJornada = `
               INSERT INTO "jornada" (entrada, salida, fecha, id_tipojornada, id_empleado, id_proyecto, id_mes, id_quincena, id_importacion)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             `;
-            const valuesJornadaInsert = [
+            const valoresInsertJornada = [
               jornada.entrada || null,
               jornada.salida || null,
               fecha,
               id_tipojornada,
-              idEmpleado,
+              id_empleado,
               id_proyecto,
-              mesId,
-              quincenaId,
-              idImportacion
+              id_mes,
+              id_quincena,
+              id_importacion
             ];
-            await client.query(textJornadaInsert, valuesJornadaInsert);
+            await client.query(textoInsertJornada, valoresInsertJornada);
           }
         }
       }
@@ -506,8 +472,7 @@ export async function insertJornada(data: jornadasData) {
       contador++;
     }
 
-    console.log(`   ✅ Procesadas jornadas de ${contador} empleados.`);
-    return { idImportacion, estaCompleta }
+    return { id_importacion, estaCompleta }
   } catch (error) {
     console.error("Error en insertJornada: ", error);
     throw error;
@@ -545,7 +510,7 @@ function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; o
     // Prevenir bucle infinito
     if (!jornada.entrada && !jornada.salida) {
       break;
-    }
-  }
+    };
+  };
   return jornadas;
-}
+};

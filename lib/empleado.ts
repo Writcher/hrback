@@ -1,6 +1,6 @@
 "use server"
 
-export type getEmpleadosParams = {
+export type getEmpleadosParametros = {
     busquedaNombre: string,
     filtroProyecto: number,
     pagina: number,
@@ -9,8 +9,8 @@ export type getEmpleadosParams = {
     ordenDireccion: string
 };
 
-export type getEmpleadoJornadasParams = {
-    idEmpleado: number,
+export type getEmpleadoJornadasParametros = {
+    id_empleado: number,
     filtroMes: number,
     filtroQuincena: number,
     filtroMarcasIncompletas: boolean,
