@@ -1,8 +1,8 @@
 "use server"
 
-import { getEmpleadoJornadasParametros } from "@/lib/empleado";
-import { getImportacionJornadasParametros } from "@/lib/importacion";
-import { insertJornadaParametros, updateJornadaParametros } from "@/lib/jornada";
+import { getEmpleadoJornadasParametros } from "@/lib/types/empleado";
+import { getImportacionJornadasParametros } from "@/lib/types/importacion";
+import { insertJornadaParametros, updateJornadaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { verifyExistenciaInstancias } from "../excel/service.excel";
 

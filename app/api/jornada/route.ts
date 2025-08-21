@@ -1,7 +1,11 @@
+import { verifyAuthToken } from "@/lib/utils/authutils";
 import { insertJornada } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
     try {
         const parametros = await request.json();
 

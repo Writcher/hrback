@@ -1,6 +1,6 @@
 "use server";
 
-import { verificarInstanciasParametros, jornadasParametros } from "../../lib/excel";
+import { verificarInstanciasParametros, jornadasParametros } from "../../lib/types/excel";
 import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
 

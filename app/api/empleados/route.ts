@@ -1,9 +1,13 @@
 "use server"
 
+import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getEmpleados } from "@/services/empleado/service.empleado";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
     try {
         const url = new URL(request.url);
         const busquedaNombre = url.searchParams.get("busquedaNombre");

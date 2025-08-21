@@ -1,6 +1,6 @@
 "use server"
 
-import { getImportacionesParametros } from "@/lib/importacion";
+import { getImportacionesParametros } from "@/lib/types/importacion";
 import { db } from "@vercel/postgres";
 
 const client = db;

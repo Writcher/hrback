@@ -1,6 +1,6 @@
 "use server"
 
-import { getEmpleadosParametros } from "@/lib/empleado";
+import { getEmpleadosParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 
 const client = db;

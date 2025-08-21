@@ -1,7 +1,11 @@
+import { verifyAuthToken } from "@/lib/utils/authutils";
 import { updateJornada } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function PATCH( request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
     try {
         const { id: id_jornada } = await params;
         const parametros = await request.json();
@@ -23,7 +27,7 @@ export async function PATCH( request: NextRequest, { params }: { params: Promise
         };
 
         const respuesta = updateJornada(updateJornadaParametro);
-        
+
         return NextResponse.json({ message: "Jornada editada correctamente." }, { status: 200 });
     } catch (error) {
         console.error("Error actualizando jornada: ", error);

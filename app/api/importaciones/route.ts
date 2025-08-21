@@ -1,9 +1,13 @@
 "use server"
 
+import { verifyAuthToken } from '@/lib/utils/authutils';
 import { getImportaciones } from '@/services/importacion/service.importacion';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
     try {
         const url = new URL(request.url);
         const filtroIncompletas = url.searchParams.get("filtroIncompletas") === "true";

@@ -1,9 +1,13 @@
 "use server"
 
+import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getImportacionJornadas } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET( request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
     try {
         const { id: id_importacion } = await params;
         const url = new URL(request.url);
