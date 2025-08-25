@@ -1,6 +1,6 @@
 "use server"
 
-import { getEmpleadoJornadasParametros } from "@/lib/types/empleado";
+import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros } from "@/lib/types/empleado";
 import { getImportacionJornadasParametros } from "@/lib/types/importacion";
 import { insertJornadaParametros, updateJornadaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
@@ -15,6 +15,7 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
         
         let textoJoin = `
             JOIN "tipojornada" t ON j.id_tipojornada = t.id
+            LEFT JOIN "tipoausencia" ta ON j.id_tipoausencia = ta.id
             LEFT JOIN "jornadaobservacion" jo ON j.id = jo.id_jornada
             LEFT JOIN "observacion" o ON jo.id_observacion = o.id
         `;
@@ -50,6 +51,7 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
                 j.salida_r,
                 j.total,
                 t.nombre AS tipojornada,
+                ta.nombre AS tipoausencia,
                 array_agg(DISTINCT o.texto) FILTER (WHERE o.texto IS NOT NULL) AS observaciones
             FROM "jornada" j
             ${textoJoin}
@@ -62,7 +64,8 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
                 j.entrada_r,
                 j.salida_r,
                 j.total,
-                t.nombre
+                t.nombre,
+                ta.nombre
             ORDER BY j.fecha ASC    
             ${textoLimite}
         `;
@@ -85,8 +88,53 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
     } catch (error) {
         console.error("Error en getEmpleadoJornadas: ", error);
         throw error;
-    }
-}
+    };
+};
+
+export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResumenParametros) {
+    try {
+        const valoresBase: any = [params.id_empleado];
+
+        let textoJoin = ''
+        
+        let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
+        
+        if (params.filtroMes !== 0) {
+            textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
+            valoresBase.push(params.filtroMes);
+        };
+        
+        if (params.filtroQuincena !== 0) {
+            const quincenaParamIndex = valoresBase.length + 1;
+            textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
+            textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
+            valoresBase.push(params.filtroQuincena);
+        };
+        
+        let textoSumatorias = `
+            SELECT
+                SUM(CAST(j.total AS DECIMAL)) as suma_total,
+                SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
+                SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
+                SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
+                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado
+            FROM "jornada" j
+            ${textoJoin}
+            ${textoFiltroBase}
+        `;
+        
+        const resultado = await client.query(textoSumatorias, valoresBase);
+
+        console.log(resultado.rows)
+        
+        return {
+            resumen: resultado.rows[0],
+        };
+    } catch (error) {
+        console.error("Error en getEmpleadoJornadas: ", error);
+        throw error;
+    };
+};
 
 export async function getImportacionJornadas(params: getImportacionJornadasParametros) {
     try {
@@ -207,11 +255,11 @@ export async function insertJornada(parametros: insertJornadaParametros) {
             id_jornadaCreada = respuestaNoAusente.rows[0].id;
         } else {
             const textoAusente = `
-                INSERT INTO "jornada" (entrada, salida, fecha, id_empleado, id_proyecto, id_tipojornada, id_quincena, id_mes, id_tipoausencia)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                INSERT INTO "jornada" (fecha, id_empleado, id_proyecto, id_tipojornada, id_quincena, id_mes, id_tipoausencia)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING id
             `;
-            const valoresAusente = [entrada, salida, fechaIso, id_empleado, id_proyecto, id_tipojornada, id_foraneas.id_quincena, id_foraneas.id_mes, id_tipoausencia];
+            const valoresAusente = [fechaIso, id_empleado, id_proyecto, id_tipojornada, id_foraneas.id_quincena, id_foraneas.id_mes, id_tipoausencia];
             const respuestaAusente = await client.query(textoAusente, valoresAusente);
             id_jornadaCreada = respuestaAusente.rows[0].id;
         };

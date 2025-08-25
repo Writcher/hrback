@@ -17,3 +17,9 @@ export type getEmpleadoJornadasParametros = {
     pagina: number,
     filasPorPagina: number,
 };
+
+export type getEmpleadoJornadasResumenParametros = {
+    id_empleado: number,
+    filtroMes: number,
+    filtroQuincena: number,
+};

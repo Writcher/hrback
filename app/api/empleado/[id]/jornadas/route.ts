@@ -1,7 +1,6 @@
 "use server"
-
 import { verifyAuthToken } from '@/lib/utils/authutils';
-import { getEmpleadoJornadas } from '@/services/jornada/service.jornada';
+import { getEmpleadoJornadas, getEmpleadoJornadasResumen } from '@/services/jornada/service.jornada';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -17,31 +16,53 @@ export async function GET(
         const filtroMes = Number(url.searchParams.get("filtroMes"));
         const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
         const filtroMarcasIncompletas = url.searchParams.get("filtroMarcasIncompletas") === "true";
-        const pagina = Number(url.searchParams.get("pagina"));
-        const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
+        
+        const paginaParam = url.searchParams.get("pagina");
+        const filasParam = url.searchParams.get("filasPorPagina");
 
-        if (
-            isNaN(filtroMes) ||
-            isNaN(filtroQuincena) ||
-            isNaN(pagina) ||
-            isNaN(filasPorPagina)
-        ) {
+        console.log(paginaParam)
+        console.log(filasParam)
+        
+        // Validar parámetros básicos
+        if (isNaN(filtroMes) || isNaN(filtroQuincena)) {
             return new Response(
                 JSON.stringify({ error: 'Faltan parametros' }),
                 { status: 400, headers: { 'Content-Type': 'application/json' } }
             );
         };
 
-        const getEmpleadoJornadasParametros = {
-            id_empleado: Number(id_empleado),
-            filtroMes,
-            filtroQuincena,
-            filtroMarcasIncompletas,
-            pagina,
-            filasPorPagina
-        };
+        let respuesta;
+        
+        // Verificar si se pasaron parámetros de paginación válidos
+        if (paginaParam && paginaParam !== '' && filasParam && filasParam !== '') {
+            const pagina = Number(paginaParam);
+            const filasPorPagina = Number(filasParam);
+            
+            // Validar que los parámetros de paginación sean números válidos
+            if (isNaN(pagina) || isNaN(filasPorPagina)) {
+                return new Response(
+                    JSON.stringify({ error: 'Parámetros de paginación inválidos' }),
+                    { status: 400, headers: { 'Content-Type': 'application/json' } }
+                );
+            };
 
-        const respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);
+            const getEmpleadoJornadasParametros = {
+                id_empleado: Number(id_empleado),
+                filtroMes,
+                filtroQuincena,
+                filtroMarcasIncompletas,
+                pagina,
+                filasPorPagina
+            };
+            respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);
+        } else {
+            const getEmpleadoJornadasResumenParametros = {
+                id_empleado: Number(id_empleado),
+                filtroMes,
+                filtroQuincena
+            };
+            respuesta = await getEmpleadoJornadasResumen(getEmpleadoJornadasResumenParametros);
+        };
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
