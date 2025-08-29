@@ -1,40 +1,42 @@
 "use server"
 
-import { getEmpleadosParametros } from "@/lib/types/empleado";
+import { getEmpleadosParametros, insertEmpleadoParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getEmpleados(params: getEmpleadosParametros) {
+export async function getEmpleados(parametros: getEmpleadosParametros) {
     try {
-        const offset = (params.pagina) * params.filasPorPagina;
-        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo'];
-        if (!columnasValidas.includes(params.ordenColumna)) {
+        const offset = (parametros.pagina) * parametros.filasPorPagina;
+        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto'];
+        if (!columnasValidas.includes(parametros.ordenColumna)) {
             throw new Error('Columna Invalida');
         };
         const direccionesValidas = ['ASC', 'DESC'];
-        if (!direccionesValidas.includes(params.ordenDireccion.toUpperCase())) {
+        if (!direccionesValidas.includes(parametros.ordenDireccion.toUpperCase())) {
             throw new Error('Dirección de ordenación invalida');
         };
-        const columna = params.ordenColumna;
-        const direccion = params.ordenDireccion.toUpperCase();
-        const busquedaNombre = `%${params.busquedaNombre}%`;
-        const valoresBase = [params.filasPorPagina, offset];
+        const columna = parametros.ordenColumna;
+        const direccion = parametros.ordenDireccion.toUpperCase();
+        const busquedaNombre = `%${parametros.busquedaNombre}%`;
+        const valoresBase = [parametros.filasPorPagina, offset];
         let conteoWhere = 0;
         let texto = `
             SELECT
-                id,
-                nombreapellido AS nombre,
-                id_reloj,
-                legajo,
-                id_proyecto
-            FROM "empleado"
+                e.id,
+                e.nombreapellido AS nombre,
+                e.id_reloj,
+                e.legajo,
+                e.id_proyecto,
+                p.nombre AS nombreproyecto
+            FROM "empleado" e
+            JOIN "proyecto" p ON e.id_proyecto = p.id
         `;
         const valores: any = [...valoresBase];
         const valores2: any = [];
         let textoFiltro = '';
         let textoFiltro2 = '';
-        if (params.busquedaNombre !== "") {
+        if (parametros.busquedaNombre !== "") {
             if (conteoWhere === 0) {
                 textoFiltro += `WHERE unaccent(nombreapellido) ILIKE unaccent($${valores.length + 1}) 
                 `;
@@ -52,22 +54,22 @@ export async function getEmpleados(params: getEmpleadosParametros) {
                 valores2.push(busquedaNombre);
             };
         };
-        if (params.filtroProyecto !== 0) {
+        if (parametros.filtroProyecto !== 0) {
             if (conteoWhere === 0) {
                 textoFiltro += `WHERE id_proyecto = $${valores.length + 1}
                 `;
                 textoFiltro2 += `WHERE id_proyecto = $${valores2.length + 1}
                 `;
-                valores.push(params.filtroProyecto);
-                valores2.push(params.filtroProyecto);
+                valores.push(parametros.filtroProyecto);
+                valores2.push(parametros.filtroProyecto);
                 conteoWhere++;
             } else if (conteoWhere > 0) {
                 textoFiltro += `AND id_proyecto = $${valores.length + 1} 
                 `;
                 textoFiltro2 += `AND id_proyecto = $${valores2.length + 1}
                 `;
-                valores.push(params.filtroProyecto);
-                valores2.push(params.filtroProyecto);
+                valores.push(parametros.filtroProyecto);
+                valores2.push(parametros.filtroProyecto);
             };
         };
         let textoOrden = '';
@@ -77,6 +79,8 @@ export async function getEmpleados(params: getEmpleadosParametros) {
             textoOrden = "ORDER BY id_reloj ";
         } else if (columna === "legajo") {
             textoOrden = "ORDER BY legajo ";
+        } else if (columna === "id_proyecto") {
+            textoOrden = "ORDER BY id_proyecto "
         };
         if (direccion === "DESC" || direccion === "ASC") {
             textoOrden += direccion;
@@ -99,6 +103,23 @@ export async function getEmpleados(params: getEmpleadosParametros) {
         };
     } catch (error) {
         console.error("Error en getEmpleados: ", error);
+        throw error;
+    };
+};
+
+export async function insertEmpleado(parametros: insertEmpleadoParametros) {
+    try {
+        const texto = `
+            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, legajo)
+            VALUES ($1, $2, $3, $4)
+        `;
+        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, parametros.legajo];
+        
+        await client.query(texto, valores);
+        
+        return;
+    } catch (error) {
+        console.error("Error en insertEmpleado: ", error);
         throw error;
     };
 };

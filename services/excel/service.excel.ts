@@ -514,3 +514,209 @@ function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; o
   };
   return jornadas;
 };
+
+interface JornadaResumen {
+  legajo: string;
+  empleado: string;
+  suma_total: number;
+  suma_total_normal: number;
+  suma_total_50: number;
+  suma_total_100: number;
+  suma_total_feriado: number;
+}
+
+export async function generarExcel(resumenJornadas: JornadaResumen[]) {
+  try {
+    // Crear el workbook
+    const workbook = new ExcelJS.Workbook();
+    
+    // Configurar propiedades del workbook
+    workbook.creator = 'Sistema de Jornadas';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+    workbook.description = 'Resumen de Jornadas de Trabajo';
+
+    // Crear la hoja de cálculo
+    const worksheet = workbook.addWorksheet('Resumen de Jornadas');
+
+    // Definir las columnas
+    worksheet.columns = [
+      { header: 'Legajo', key: 'legajo', width: 15 },
+      { header: 'Empleado', key: 'empleado', width: 50 },
+      { header: 'Total Horas', key: 'suma_total', width: 20 },
+      { header: 'Horas Normales', key: 'suma_total_normal', width: 20 },
+      { header: 'Horas 50%', key: 'suma_total_50', width: 20 },
+      { header: 'Horas 100%', key: 'suma_total_100', width: 20 },
+      { header: 'Horas Feriado', key: 'suma_total_feriado', width: 20 }
+    ];
+
+    // Agregar los datos
+    resumenJornadas.forEach(resumen => {
+      worksheet.addRow({
+        legajo: resumen.legajo,
+        empleado: resumen.empleado,
+        suma_total: parseFloat(resumen.suma_total.toString()),
+        suma_total_normal: parseFloat(resumen.suma_total_normal.toString()),
+        suma_total_50: parseFloat(resumen.suma_total_50.toString()),
+        suma_total_100: parseFloat(resumen.suma_total_100.toString()),
+        suma_total_feriado: parseFloat(resumen.suma_total_feriado.toString())
+      });
+    });
+
+    // Estilizar el header
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 25;
+    headerRow.eachCell((cell) => {
+      cell.font = { 
+        bold: true, 
+        color: { argb: 'FFFFFF' },
+        size: 11
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: '2F5597' } // Azul oscuro profesional
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: '000000' } },
+        bottom: { style: 'thin', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: '000000' } }
+      };
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle',
+        wrapText: true 
+      };
+    });
+
+    // Aplicar estilos a las filas de datos
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber > 1) { // Skip header row
+        row.height = 20;
+        
+        // Alternar colores de fila para mejor legibilidad
+        if (rowNumber % 2 === 0) {
+          row.eachCell((cell) => {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'F8F9FA' } // Gris muy claro
+            };
+          });
+        };
+
+        // Aplicar bordes y formato
+        row.eachCell((cell, colNumber) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'CCCCCC' } },
+            left: { style: 'thin', color: { argb: 'CCCCCC' } },
+            bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+            right: { style: 'thin', color: { argb: 'CCCCCC' } }
+          };
+
+          // Alineación específica por columna
+          if (colNumber === 1) { // Legajo
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else if (colNumber === 2) { // Empleado
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          } else { // Columnas numéricas
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            cell.numFmt = '0.00'; // Formato numérico con 2 decimales
+          };
+        });
+      };
+    });
+
+    // Calcular totales
+    const totales = resumenJornadas.reduce((acc, resumen) => ({
+      suma_total: acc.suma_total + parseFloat(resumen.suma_total.toString()),
+      suma_total_normal: acc.suma_total_normal + parseFloat(resumen.suma_total_normal.toString()),
+      suma_total_50: acc.suma_total_50 + parseFloat(resumen.suma_total_50.toString()),
+      suma_total_100: acc.suma_total_100 + parseFloat(resumen.suma_total_100.toString()),
+      suma_total_feriado: acc.suma_total_feriado + parseFloat(resumen.suma_total_feriado.toString())
+    }), {
+      suma_total: 0,
+      suma_total_normal: 0,
+      suma_total_50: 0,
+      suma_total_100: 0,
+      suma_total_feriado: 0
+    });
+
+    // Agregar fila vacía antes de los totales
+    worksheet.addRow({});
+
+    // Agregar fila de totales
+    const totalRow = worksheet.addRow({
+      legajo: '',
+      empleado: 'TOTALES:',
+      suma_total: totales.suma_total,
+      suma_total_normal: totales.suma_total_normal,
+      suma_total_50: totales.suma_total_50,
+      suma_total_100: totales.suma_total_100,
+      suma_total_feriado: totales.suma_total_feriado
+    });
+
+    // Estilizar la fila de totales
+    totalRow.height = 25;
+    totalRow.eachCell((cell, colNumber) => {
+      cell.font = { bold: true, size: 11 };
+      cell.border = {
+        top: { style: 'double', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: '000000' } },
+        bottom: { style: 'double', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: '000000' } }
+      };
+
+      if (colNumber === 2) { // Columna empleado con "TOTALES:"
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'E6F3FF' } // Azul claro
+        };
+      } else if (colNumber > 2) { // Columnas numéricas
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        cell.numFmt = '0.00';
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFACD' } // Amarillo claro
+        };
+      };
+    });
+
+    // Aplicar filtros automáticos (solo a los datos, no a los totales)
+    worksheet.autoFilter = {
+      from: 'A1',
+      to: `G${resumenJornadas.length + 1}`
+    };
+
+    // Congelar la primera fila
+    worksheet.views = [{
+      state: 'frozen',
+      ySplit: 1
+    }];
+
+    // Agregar información adicional en una hoja separada
+    const infoSheet = workbook.addWorksheet('Información');
+    infoSheet.addRow(['Reporte generado:', new Date().toLocaleString('es-AR')]);
+    infoSheet.addRow(['Total de empleados:', resumenJornadas.length]);
+    infoSheet.addRow(['Total de horas:', totales.suma_total]);
+    
+    // Estilizar la hoja de información
+    infoSheet.getColumn(1).width = 20;
+    infoSheet.getColumn(2).width = 25;
+    infoSheet.eachRow((row) => {
+      row.getCell(1).font = { bold: true };
+    });
+
+    // Generar el buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return buffer;
+
+  } catch (error) {
+    console.error('Error generando Excel:', error);
+    throw new Error('Error al generar el archivo Excel');
+  };
+};

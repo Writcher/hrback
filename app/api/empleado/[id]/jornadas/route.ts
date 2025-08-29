@@ -1,4 +1,5 @@
 "use server"
+
 import { verifyAuthToken } from '@/lib/utils/authutils';
 import { getEmpleadoJornadas, getEmpleadoJornadasResumen } from '@/services/jornada/service.jornada';
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,9 +20,6 @@ export async function GET(
         
         const paginaParam = url.searchParams.get("pagina");
         const filasParam = url.searchParams.get("filasPorPagina");
-
-        console.log(paginaParam)
-        console.log(filasParam)
         
         // Validar parámetros básicos
         if (isNaN(filtroMes) || isNaN(filtroQuincena)) {

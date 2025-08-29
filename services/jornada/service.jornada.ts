@@ -1,6 +1,6 @@
 "use server"
 
-import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros } from "@/lib/types/empleado";
+import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getImportacionJornadasParametros } from "@/lib/types/importacion";
 import { insertJornadaParametros, updateJornadaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
@@ -124,12 +124,55 @@ export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResu
         `;
         
         const resultado = await client.query(textoSumatorias, valoresBase);
-
-        console.log(resultado.rows)
         
         return {
             resumen: resultado.rows[0],
         };
+    } catch (error) {
+        console.error("Error en getEmpleadoJornadas: ", error);
+        throw error;
+    };
+};
+
+export async function getJornadasResumen(params: getJornadasResumenParametros) {
+    try {
+        const valoresBase: any = [];
+
+        let textoJoin = 'JOIN "empleado" e ON j.id_empleado = e.id ';
+        
+        let textoFiltroBase = 'WHERE 1=1 ';
+        
+        if (params.mes !== 0) {
+            textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
+            valoresBase.push(params.mes);
+        };
+        
+        if (params.quincena !== 0) {
+            const quincenaParamIndex = valoresBase.length + 1;
+            textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
+            textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
+            valoresBase.push(params.quincena);
+        };
+        
+        let textoSumatorias = `
+            SELECT
+                e.legajo,
+                e.nombreapellido as empleado,
+                SUM(CAST(j.total AS DECIMAL)) as suma_total,
+                SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
+                SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
+                SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
+                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado
+            FROM "jornada" j
+            ${textoJoin}
+            ${textoFiltroBase}
+            GROUP BY j.id_empleado, e.legajo, e.nombreapellido
+            ORDER BY e.nombreapellido
+        `;
+        
+        const resultado = await client.query(textoSumatorias, valoresBase);
+        
+        return resultado.rows
     } catch (error) {
         console.error("Error en getEmpleadoJornadas: ", error);
         throw error;

@@ -23,3 +23,16 @@ export type getEmpleadoJornadasResumenParametros = {
     filtroMes: number,
     filtroQuincena: number,
 };
+
+export type getJornadasResumenParametros = {
+    proyecto: number,
+    mes: number,
+    quincena: number,
+};
+
+export type insertEmpleadoParametros = {
+    id_reloj: number,
+    id_proyecto: number,
+    legajo: number,
+    nombre: string,
+};
