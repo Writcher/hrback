@@ -2,9 +2,10 @@
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getImportacionJornadasParametros } from "@/lib/types/importacion";
-import { insertJornadaParametros, updateJornadaParametros } from "@/lib/types/jornada";
+import { insertJornadaParametros, updateJornadaParametros, validateJornadaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { verifyExistenciaInstancias } from "../excel/service.excel";
+import { getEstadosJornada } from "../estadojornada/service.estadojornada";
 
 const client = db;
 
@@ -12,35 +13,35 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
     try {
         const offset = (params.pagina) * params.filasPorPagina;
         const valoresBase: any = [params.id_empleado];
-        
+
         let textoJoin = `
             JOIN "tipojornada" t ON j.id_tipojornada = t.id
             LEFT JOIN "tipoausencia" ta ON j.id_tipoausencia = ta.id
             LEFT JOIN "jornadaobservacion" jo ON j.id = jo.id_jornada
             LEFT JOIN "observacion" o ON jo.id_observacion = o.id
         `;
-        
+
         let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
-        
+
         if (params.filtroMes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(params.filtroMes);
         }
-        
+
         if (params.filtroQuincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
             valoresBase.push(params.filtroQuincena);
         }
-        
+
         if (params.filtroMarcasIncompletas) {
             textoFiltroBase += `AND (j.entrada IS NULL OR j.salida IS NULL) `;
         }
-        
+
         const valoresPrincipal = [...valoresBase, params.filasPorPagina, offset];
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
-        
+
         let texto = `
             SELECT
                 j.id,
@@ -69,7 +70,7 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
             ORDER BY j.fecha ASC    
             ${textoLimite}
         `;
-        
+
         const resultado = await client.query(texto, valoresPrincipal);
 
         let textoConteo = `
@@ -78,9 +79,9 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
             ${textoJoin}
             ${textoFiltroBase}
         `;
-        
+
         const resultadoConteo = await client.query(textoConteo, valoresBase);
-        
+
         return {
             jornadas: resultado.rows,
             totalJornadas: parseInt(resultadoConteo.rows[0].total), // Ensure it's a number
@@ -96,21 +97,21 @@ export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResu
         const valoresBase: any = [params.id_empleado];
 
         let textoJoin = ''
-        
+
         let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
-        
+
         if (params.filtroMes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(params.filtroMes);
         };
-        
+
         if (params.filtroQuincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
             valoresBase.push(params.filtroQuincena);
         };
-        
+
         let textoSumatorias = `
             SELECT
                 SUM(CAST(j.total AS DECIMAL)) as suma_total,
@@ -122,9 +123,9 @@ export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResu
             ${textoJoin}
             ${textoFiltroBase}
         `;
-        
+
         const resultado = await client.query(textoSumatorias, valoresBase);
-        
+
         return {
             resumen: resultado.rows[0],
         };
@@ -139,21 +140,21 @@ export async function getJornadasResumen(params: getJornadasResumenParametros) {
         const valoresBase: any = [];
 
         let textoJoin = 'JOIN "empleado" e ON j.id_empleado = e.id ';
-        
+
         let textoFiltroBase = 'WHERE 1=1 ';
-        
+
         if (params.mes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(params.mes);
         };
-        
+
         if (params.quincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
             valoresBase.push(params.quincena);
         };
-        
+
         let textoSumatorias = `
             SELECT
                 e.legajo,
@@ -169,9 +170,9 @@ export async function getJornadasResumen(params: getJornadasResumenParametros) {
             GROUP BY j.id_empleado, e.legajo, e.nombreapellido
             ORDER BY e.nombreapellido
         `;
-        
+
         const resultado = await client.query(textoSumatorias, valoresBase);
-        
+
         return resultado.rows
     } catch (error) {
         console.error("Error en getEmpleadoJornadas: ", error);
@@ -181,6 +182,10 @@ export async function getJornadasResumen(params: getJornadasResumenParametros) {
 
 export async function getImportacionJornadas(params: getImportacionJornadasParametros) {
     try {
+        const estadosJornada = await getEstadosJornada();
+
+        const jornadaValidada = estadosJornada.find(e => e.nombre.toLowerCase() === 'validada');
+
         const offset = (params.pagina) * params.filasPorPagina;
 
         const valoresBase: any = [params.id_importacion];
@@ -199,10 +204,13 @@ export async function getImportacionJornadas(params: getImportacionJornadasParam
                 j.fecha,
                 j.entrada,
                 j.salida,
+                ej.nombre AS estadojornada,
                 e.nombreapellido AS nombreempleado
             FROM "jornada" j
             JOIN "empleado" e ON j.id_empleado = e.id
+            JOIN "estadojornada" ej ON j.id_estadojornada = ej.id
             ${textoFiltroBase}
+            ORDER BY e.nombreapellido ASC
             ${textoLimite}
         `;
 
@@ -220,10 +228,12 @@ export async function getImportacionJornadas(params: getImportacionJornadasParam
             SELECT COUNT(*) AS total
             FROM "jornada" j
             WHERE j.id_importacion = $1
-            AND (j.entrada IS NULL OR j.salida IS NULL)
+            AND j.id_estadojornada != $2
         `;
 
-        const resultadoConteoIncompleto = await client.query(textoConteoIncompleto, valoresBase);
+        const valoresConteoIncompleto = [params.id_importacion, jornadaValidada.id];
+
+        const resultadoConteoIncompleto = await client.query(textoConteoIncompleto, valoresConteoIncompleto);
 
         return {
             jornadas: resultado.rows,
@@ -253,6 +263,45 @@ export async function updateJornada(params: updateJornadaParametros) {
         return respuesta;
     } catch (error) {
         console.error("Error en updateJornada: ", error);
+        throw error;
+    };
+};
+
+export async function validateJornada(params: validateJornadaParametros) {
+    try {
+        const estadosJornada = await getEstadosJornada();
+
+        const jornadaValidada = estadosJornada.find(e => e.nombre.toLowerCase() === 'validada');
+
+        const texto = `
+            UPDATE jornada
+            SET id_estadojornada = $1
+            WHERE id = $2
+        `;
+        const valores = [jornadaValidada.id, params.id_jornada];
+
+        const respuestaRaw = await client.query(texto, valores);
+        const respuesta = respuestaRaw.rows[0]
+
+        return respuesta;
+    } catch (error) {
+        console.error("Error en updateJornada: ", error);
+        throw error;
+    };
+};
+
+export async function deleteJornada(id: number) {
+    try {
+        const texto = `
+            DELETE FROM "jornada"
+            WHERE id = $1
+        `;
+        const valores = [id];
+
+        await client.query(texto, valores);
+        return;
+    } catch (error) {
+        console.error("Error en deleteJornada: ", error);
         throw error;
     };
 };

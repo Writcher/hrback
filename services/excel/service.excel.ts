@@ -3,6 +3,10 @@
 import { verificarInstanciasParametros, jornadasParametros } from "../../lib/types/excel";
 import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
+import { getEstadosImportacion } from "../estadoimportacion/service.estadoimportacion";
+import { insertImportacion } from "../importacion/service.importacion";
+import { getEstadosJornada } from "../estadojornada/service.estadojornada";
+import { getEstadosEmpleado } from "../estadoempleado/service.estadoempleado";
 
 const client = db;
 
@@ -81,7 +85,6 @@ export async function verifyExistenciaInstancias(params: verificarInstanciasPara
   };
 };
 
-//Esta la hizo GPT, no tocar que por ahora anda
 export async function processExcel(buffer: ArrayBuffer) {
   // Función mejorada para convertir número serial Excel a JS Date
   function excelDateToJSDate(serial: number): Date {
@@ -98,7 +101,7 @@ export async function processExcel(buffer: ArrayBuffer) {
 
     date.setUTCHours(hours, minutes, seconds, 0);
     return date;
-  };
+  }
 
   // Función para extraer fecha de un valor de celda
   function extractDate(cellValue: any): string {
@@ -106,12 +109,12 @@ export async function processExcel(buffer: ArrayBuffer) {
 
     if (cellValue instanceof Date) {
       return cellValue.toISOString().split("T")[0];
-    };
+    }
 
     if (typeof cellValue === "number") {
       const date = excelDateToJSDate(cellValue);
       return date.toISOString().split("T")[0];
-    };
+    }
 
     const str = String(cellValue).trim();
     if (str.includes('/')) {
@@ -122,13 +125,13 @@ export async function processExcel(buffer: ArrayBuffer) {
           const currentYear = new Date().getFullYear();
           const currentCentury = Math.floor(currentYear / 100) * 100;
           year = String(currentCentury + parseInt(year));
-        };
+        }
         return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      };
-    };
+      }
+    }
 
     return str.split(" ")[0];
-  };
+  }
 
   // Función para extraer hora de un valor de celda
   function extractTime(cellValue: any): string {
@@ -145,14 +148,14 @@ export async function processExcel(buffer: ArrayBuffer) {
       if (correctedMinutes >= 60) {
         correctedMinutes -= 60;
         correctedHours += 1;
-      };
+      }
 
       if (correctedHours >= 24) {
         correctedHours -= 24;
-      };
+      }
 
       return `${correctedHours.toString().padStart(2, '0')}:${correctedMinutes.toString().padStart(2, '0')}`;
-    };
+    }
 
     if (typeof cellValue === "number") {
       if (cellValue < 1) {
@@ -166,27 +169,80 @@ export async function processExcel(buffer: ArrayBuffer) {
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      };
-    };
+      }
+    }
 
     const str = String(cellValue).trim();
     const parts = str.split(' ');
     if (parts.length > 1) {
       return parts[1];
-    };
+    }
 
     return str;
-  };
+  }
 
   // Función para convertir tiempo a minutos para comparación
   function timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
-  };
+  }
 
-  // Función para limpiar registros duplicados y erróneos
+  // Función para detectar posibles turnos nocturnos basado en patrones de horarios
+  function detectNightShiftPattern(registros: { fecha: string, hora: string, tipo: string }[]): {
+    isLikelyNightShift: boolean,
+    suspiciousRecords: { fecha: string, hora: string, tipo: string, reason: string }[]
+  } {
+    const suspicious: { fecha: string, hora: string, tipo: string, reason: string }[] = [];
+
+    // Agrupar por fecha para análisis
+    const recordsByDate = new Map<string, { hora: string, tipo: string }[]>();
+    registros.forEach(registro => {
+      if (!recordsByDate.has(registro.fecha)) {
+        recordsByDate.set(registro.fecha, []);
+      }
+      recordsByDate.get(registro.fecha)!.push({ hora: registro.hora, tipo: registro.tipo });
+    });
+
+    let nightShiftIndicators = 0;
+
+    for (const [fecha, dayRecords] of recordsByDate.entries()) {
+      for (const record of dayRecords) {
+        const minutes = timeToMinutes(record.hora);
+
+        // Detectar patrones sospechosos de turno nocturno
+        if (minutes >= 0 && minutes < 360 && record.tipo === 'SALIDA') { // 00:00-06:00 SALIDA
+          suspicious.push({
+            fecha,
+            hora: record.hora,
+            tipo: record.tipo,
+            reason: 'SALIDA en madrugada - posible fin de turno nocturno'
+          });
+          nightShiftIndicators++;
+        }
+
+        if (minutes >= 1320 && record.tipo === 'ENTRADA') { // 22:00-23:59 ENTRADA
+          suspicious.push({
+            fecha,
+            hora: record.hora,
+            tipo: record.tipo,
+            reason: 'ENTRADA nocturna - posible inicio de turno nocturno'
+          });
+          nightShiftIndicators++;
+        }
+      }
+    }
+
+    return {
+      isLikelyNightShift: nightShiftIndicators > 0,
+      suspiciousRecords: suspicious
+    };
+  }
+
+  // Función mejorada para limpiar registros duplicados y erróneos
   function cleanRegistros(registros: { fecha: string, hora: string, tipo: string }[]) {
-    // Ordenar por fecha y hora
+    if (registros.length === 0) return [];
+
+    // Ordenar por fecha y hora (sin modificar fechas para turnos nocturnos)
     registros.sort((a, b) => {
       const dateCompare = a.fecha.localeCompare(b.fecha);
       if (dateCompare !== 0) return dateCompare;
@@ -194,7 +250,7 @@ export async function processExcel(buffer: ArrayBuffer) {
     });
 
     const cleaned: { fecha: string, hora: string, tipo: string }[] = [];
-    const TOLERANCE_MINUTES = 5; // Tolerancia de 5 minutos
+    const TOLERANCE_MINUTES = 5;
 
     for (let i = 0; i < registros.length; i++) {
       const current = registros[i];
@@ -210,21 +266,17 @@ export async function processExcel(buffer: ArrayBuffer) {
           const nextMinutes = timeToMinutes(next.hora);
           const diffMinutes = Math.abs(nextMinutes - currentMinutes);
 
-          // Si están a menos de 5 minutos de distancia
+          // Si están a menos de la tolerancia de distancia
           if (diffMinutes <= TOLERANCE_MINUTES) {
-
-            // Lógica de resolución de conflictos:
-
             // Caso 1: Misma hora exacta - tomar la primera
             if (diffMinutes === 0) {
               cleaned.push(current);
               i++; // Saltar la siguiente
               continue;
-            };
+            }
 
             // Caso 2: Si uno es ENTRADA y otro SALIDA, evaluar contexto
             if (current.tipo !== next.tipo) {
-              // Determinar cuál es más lógico basado en el patrón esperado
               const lastEntry = cleaned[cleaned.length - 1];
 
               if (lastEntry && lastEntry.fecha === current.fecha) {
@@ -236,35 +288,40 @@ export async function processExcel(buffer: ArrayBuffer) {
                   // Si ya hay una salida, la siguiente debería ser entrada
                   const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
                   cleaned.push(entradaRecord);
-                };
+                }
               } else {
                 // Si no hay contexto previo, tomar ENTRADA
                 const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
                 cleaned.push(entradaRecord);
-              };
+              }
               i++; // Saltar la siguiente
               continue;
-            };
+            }
 
             // Caso 3: Mismo tipo - tomar la primera
             cleaned.push(current);
             i++; // Saltar la siguiente
             continue;
-          };
-        };
-      };
+          }
+        }
+      }
 
       // Si llegamos aquí, no hay conflicto
       cleaned.push(current);
-    };
+    }
 
     return cleaned;
-  };
+  }
+
+
 
   // Función para validar si los registros están completos (pares entrada-salida)
-  function validateCompleteRecords(registros: { fecha: string, hora: string, tipo: string }[]): boolean {
-    // Agrupar registros por fecha
+  function validateCompleteRecords(registros: { fecha: string, hora: string, tipo: string }[]): {
+    isComplete: boolean,
+    issues: { fecha: string, issue: string }[]
+  } {
     const recordsByDate = new Map<string, { hora: string, tipo: string }[]>();
+    const issues: { fecha: string, issue: string }[] = [];
 
     registros.forEach(registro => {
       if (!recordsByDate.has(registro.fecha)) {
@@ -273,15 +330,16 @@ export async function processExcel(buffer: ArrayBuffer) {
       recordsByDate.get(registro.fecha)!.push({ hora: registro.hora, tipo: registro.tipo });
     });
 
-    // Verificar cada día
+    let isComplete = true;
+
     for (const [fecha, dayRecords] of recordsByDate.entries()) {
-      // Ordenar por hora
       dayRecords.sort((a, b) => timeToMinutes(a.hora) - timeToMinutes(b.hora));
 
-      // Verificar si hay un número par de registros y si alternan ENTRADA-SALIDA
+      // Verificar si hay un número par de registros
       if (dayRecords.length % 2 !== 0) {
-        // Número impar de registros = incompleto
-        return false;
+        isComplete = false;
+        issues.push({ fecha, issue: `Número impar de registros (${dayRecords.length})` });
+        continue;
       }
 
       // Verificar patrón ENTRADA-SALIDA
@@ -289,14 +347,36 @@ export async function processExcel(buffer: ArrayBuffer) {
         const entrada = dayRecords[i];
         const salida = dayRecords[i + 1];
 
+        if (!entrada || !salida) {
+          isComplete = false;
+          issues.push({ fecha, issue: 'Registro faltante en par entrada-salida' });
+          continue;
+        }
+
         if (entrada.tipo !== 'ENTRADA' || salida.tipo !== 'SALIDA') {
-          return false;
+          isComplete = false;
+          issues.push({
+            fecha,
+            issue: `Patrón incorrecto: ${entrada.tipo}-${salida.tipo} en lugar de ENTRADA-SALIDA`
+          });
+        }
+
+        // Verificar que la salida sea después de la entrada
+        const entradaMinutes = timeToMinutes(entrada.hora);
+        const salidaMinutes = timeToMinutes(salida.hora);
+
+        if (salidaMinutes <= entradaMinutes) {
+          isComplete = false;
+          issues.push({
+            fecha,
+            issue: `Salida (${salida.hora}) no puede ser antes o igual que entrada (${entrada.hora})`
+          });
         }
       }
     }
 
-    return true;
-  };
+    return { isComplete, issues };
+  }
 
   // Procesar Excel
   const workbook = new ExcelJS.Workbook();
@@ -305,10 +385,16 @@ export async function processExcel(buffer: ArrayBuffer) {
 
   if (!worksheet) {
     throw new Error("No se encontró hoja en el archivo");
-  };
+  }
 
   // Parsear filas a partir de la 7 (ignorando encabezados)
-  const empleadosMap = new Map<string, { nombre: string, registros: { fecha: string, hora: string, tipo: string }[] }>();
+  const empleadosMap = new Map<string, {
+    nombre: string,
+    registros: { fecha: string, hora: string, tipo: string }[],
+    registrosOriginales: number,
+    registrosLimpios: number,
+    issues: { fecha: string, issue: string }[]
+  }>();
 
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber <= 6) return;
@@ -325,32 +411,55 @@ export async function processExcel(buffer: ArrayBuffer) {
     const hora = extractTime(horaRaw);
 
     if (!empleadosMap.has(idEmpleado)) {
-      empleadosMap.set(idEmpleado, { nombre: nombreEmpleado, registros: [] });
-    };
+      empleadosMap.set(idEmpleado, {
+        nombre: nombreEmpleado,
+        registros: [],
+        registrosOriginales: 0,
+        registrosLimpios: 0,
+        issues: []
+      });
+    }
 
     empleadosMap.get(idEmpleado)!.registros.push({ fecha, hora, tipo });
   });
 
-  // Limpiar registros duplicados y validar completitud para cada empleado
+  // Procesar cada empleado
   let globalIsComplete = true;
+  const empleadosProcessed = new Map();
 
   for (const [idEmpleado, data] of empleadosMap.entries()) {
-    data.registros = cleanRegistros(data.registros);
+    const registrosOriginales = data.registros.length;
 
-    // Validar si los registros están completos
-    const isEmployeeComplete = validateCompleteRecords(data.registros);
+    // Detectar patrones de turno nocturno
+    const nightShiftAnalysis = detectNightShiftPattern(data.registros);
 
-    if (!isEmployeeComplete) {
+    // Limpiar registros duplicados
+    let registrosLimpios = cleanRegistros(data.registros);
+
+    // Validar completitud (sin inferir registros faltantes)
+    const validation = validateCompleteRecords(registrosLimpios);
+
+    if (!validation.isComplete) {
       globalIsComplete = false;
-    };
-  };
+    }
+
+    empleadosProcessed.set(idEmpleado, {
+      nombre: data.nombre,
+      registros: registrosLimpios,
+      registrosOriginales,
+      registrosLimpios: registrosLimpios.length,
+      issues: validation.issues,
+      isComplete: validation.isComplete,
+      nightShiftWarnings: nightShiftAnalysis.suspiciousRecords,
+      requiresManualReview: !validation.isComplete || nightShiftAnalysis.isLikelyNightShift
+    });
+  }
 
   return {
-    empleadosJornada: empleadosMap,
+    empleadosJornada: empleadosProcessed,
     importacionCompleta: globalIsComplete
   };
-};
-//
+}
 
 export async function insertJornada(params: jornadasParametros) {
   try {
@@ -361,35 +470,31 @@ export async function insertJornada(params: jornadasParametros) {
     let id_mes: number = 0;
     let id_quincena: number = 0;
 
-    const textoEstadosImportacion = `
-      SELECT *
-      FROM "estadoimportacion"
-    `;
+    const estadosImportacion = await getEstadosImportacion();
 
-    const { rows: estados } = await client.query(textoEstadosImportacion);
+    const importacionIncompleta = estadosImportacion.find(e => e.nombre.toLowerCase() === 'incompleta');
+    const importacionRevision = estadosImportacion.find(e => e.nombre.toLowerCase() === 'revisión');
 
-    const importacionCompleta = estados.find(e => e.nombre.toLowerCase() === 'completa');
-    const importacionIncompleta = estados.find(e => e.nombre.toLowerCase() === 'incompleta');
+    const estadosJornada = await getEstadosJornada();
 
-    const textoImportacion = `
-      INSERT INTO "importacion" (id_estadoimportacion, id_proyecto)
-      VALUES ($1, $2)
-      RETURNING id
-    `;
-    const valoresImportacionCompleta = [importacionCompleta.id, id_proyecto];
-    const valoresImportacionIncompleta = [importacionIncompleta.id, id_proyecto];
-    let importacionRaw;
-    
+    const jornadaSinValidar = estadosJornada.find(e => e.nombre.toLowerCase() === 'sin validar');
+    const jornadaRequiereRevision = estadosJornada.find(e => e.nombre.toLowerCase() === 'requiere revision');
+
+    const estadosEmpleado = await getEstadosEmpleado();
+
+    const empleadoActivo = estadosEmpleado.find(e => e.nombre.toLowerCase() === 'activo');
+
+    let id_importacion;
+
     if (empleadosJornadas.importacionCompleta) {
-      importacionRaw = await client.query(textoImportacion, valoresImportacionCompleta)
+      id_importacion = await insertImportacion(importacionRevision.id, id_proyecto);
     } else {
-      importacionRaw = await client.query(textoImportacion, valoresImportacionIncompleta)
+      id_importacion = await insertImportacion(importacionIncompleta.id, id_proyecto);
     };
 
-    const id_importacion = importacionRaw.rows[0].id;
     const estaCompleta = empleadosJornadas.importacionCompleta;
 
-    for (const [id_reloj, { nombre, registros }] of empleadosJornadas.empleadosJornada.entries()) {
+    for (const [id_reloj, { nombre, registros, requiresManualReview }] of empleadosJornadas.empleadosJornada.entries()) {
 
       let id_empleado: number;
       const textoEmpleado = `
@@ -402,11 +507,11 @@ export async function insertJornada(params: jornadasParametros) {
 
       if (resultadoEmpleado.rowCount === 0) {
         const textoInsertEmpleado = `
-            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto)
-            VALUES ($1, $2, $3)
+            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, id_estadoempleado)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
           `;
-        const valoresInsertEmpleado = [nombre, id_reloj, id_proyecto];
+        const valoresInsertEmpleado = [nombre, id_reloj, id_proyecto, empleadoActivo.id];
         const resultadoInsertempleado = await client.query(textoInsertEmpleado, valoresInsertEmpleado);
         id_empleado = resultadoInsertempleado.rows[0].id;
       } else {
@@ -418,7 +523,7 @@ export async function insertJornada(params: jornadasParametros) {
       for (const { fecha, hora, tipo } of registros) {
         if (!jornadasPorFecha.has(fecha)) {
           jornadasPorFecha.set(fecha, []);
-        }
+        };
 
         const registrosFecha = jornadasPorFecha.get(fecha)!;
         registrosFecha.push({
@@ -426,7 +531,7 @@ export async function insertJornada(params: jornadasParametros) {
           hora: hora,
           orden: registrosFecha.length
         });
-      }
+      };
 
       for (const [fecha, registrosFecha] of jornadasPorFecha.entries()) {
 
@@ -443,15 +548,15 @@ export async function insertJornada(params: jornadasParametros) {
           const foreignIds = await verifyExistenciaInstancias(params);
           id_mes = foreignIds.id_mes;
           id_quincena = foreignIds.id_quincena;
-        }
+        };
 
         const jornadas = emparejarEntradaSalida(registrosFecha);
 
         for (const jornada of jornadas) {
           if (jornada.entrada || jornada.salida) {
             const textoInsertJornada = `
-              INSERT INTO "jornada" (entrada, salida, fecha, id_tipojornada, id_empleado, id_proyecto, id_mes, id_quincena, id_importacion)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              INSERT INTO "jornada" (entrada, salida, fecha, id_tipojornada, id_empleado, id_proyecto, id_mes, id_quincena, id_importacion, id_estadojornada)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             `;
             const valoresInsertJornada = [
               jornada.entrada || null,
@@ -462,22 +567,23 @@ export async function insertJornada(params: jornadasParametros) {
               id_proyecto,
               id_mes,
               id_quincena,
-              id_importacion
+              id_importacion,
+              requiresManualReview ? jornadaRequiereRevision.id : jornadaSinValidar.id
             ];
             await client.query(textoInsertJornada, valoresInsertJornada);
-          }
-        }
-      }
+          };
+        };
+      };
 
       contador++;
-    }
+    };
 
     return { id_importacion, estaCompleta }
   } catch (error) {
     console.error("Error en insertJornada: ", error);
     throw error;
-  }
-}
+  };
+};
 
 function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; orden: number }>) {
   const jornadas: Array<{ entrada?: string; salida?: string }> = [];
@@ -529,7 +635,7 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
   try {
     // Crear el workbook
     const workbook = new ExcelJS.Workbook();
-    
+
     // Configurar propiedades del workbook
     workbook.creator = 'Sistema de Jornadas';
     workbook.created = new Date();
@@ -567,8 +673,8 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
     const headerRow = worksheet.getRow(1);
     headerRow.height = 25;
     headerRow.eachCell((cell) => {
-      cell.font = { 
-        bold: true, 
+      cell.font = {
+        bold: true,
         color: { argb: 'FFFFFF' },
         size: 11
       };
@@ -583,10 +689,10 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
         bottom: { style: 'thin', color: { argb: '000000' } },
         right: { style: 'thin', color: { argb: '000000' } }
       };
-      cell.alignment = { 
-        horizontal: 'center', 
+      cell.alignment = {
+        horizontal: 'center',
         vertical: 'middle',
-        wrapText: true 
+        wrapText: true
       };
     });
 
@@ -594,7 +700,7 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber > 1) { // Skip header row
         row.height = 20;
-        
+
         // Alternar colores de fila para mejor legibilidad
         if (rowNumber % 2 === 0) {
           row.eachCell((cell) => {
@@ -703,7 +809,7 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
     infoSheet.addRow(['Reporte generado:', new Date().toLocaleString('es-AR')]);
     infoSheet.addRow(['Total de empleados:', resumenJornadas.length]);
     infoSheet.addRow(['Total de horas:', totales.suma_total]);
-    
+
     // Estilizar la hoja de información
     infoSheet.getColumn(1).width = 20;
     infoSheet.getColumn(2).width = 25;

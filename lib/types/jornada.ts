@@ -6,6 +6,10 @@ export type updateJornadaParametros = {
     salida: string;
 };
 
+export type validateJornadaParametros = {
+    id_jornada: number;
+};
+
 export type insertJornadaParametros = {
     entrada: string | null,
     salida: string | null,

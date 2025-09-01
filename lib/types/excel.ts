@@ -13,6 +13,7 @@ export type empleadosJornada = Map<string, {
         hora: string;
         tipo: string;
     }[];
+    requiresManualReview: boolean;
 }>;
 
 export type clavesForaneas = {

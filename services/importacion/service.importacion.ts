@@ -5,7 +5,7 @@ import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getImportaciones(params: getImportacionesParametros) {
+export async function getImportaciones(parametros: getImportacionesParametros) {
     try {
         const textoEstadosImportacion = `
             SELECT *
@@ -19,9 +19,9 @@ export async function getImportaciones(params: getImportacionesParametros) {
         const importacionIncompleta = estados.find(e => e.nombre.toLowerCase() === 'incompleta');
         const idEstadoIncompleta = importacionIncompleta.id;
 
-        const offset = (params.pagina) * params.filasPorPagina;
+        const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const valores: any = [params.filasPorPagina, offset];
+        const valores: any = [parametros.filasPorPagina, offset];
         const valoresConteo: any = [];
 
         let textoFiltro = '';
@@ -29,7 +29,7 @@ export async function getImportaciones(params: getImportacionesParametros) {
 
         let conteoWhere = 0;
 
-        if (params.filtroIncompletas) {
+        if (parametros.filtroIncompletas) {
             if (conteoWhere === 0) {
                 textoFiltro += `
                     WHERE id_estadoimportacion = $${valores.length + 1}::int
@@ -50,7 +50,7 @@ export async function getImportaciones(params: getImportacionesParametros) {
             conteoWhere++
         };
 
-        if (params.filtroProyecto !== 0) {
+        if (parametros.filtroProyecto !== 0) {
             if (conteoWhere === 0) {
                 textoFiltro += `
                     WHERE id_proyecto = $${valores.length + 1}::int
@@ -66,8 +66,8 @@ export async function getImportaciones(params: getImportacionesParametros) {
                     AND id_proyecto = $${valoresConteo.length + 1}::int
                 `;
             };
-            valores.push(params.filtroProyecto);
-            valoresConteo.push(params.filtroProyecto);
+            valores.push(parametros.filtroProyecto);
+            valoresConteo.push(parametros.filtroProyecto);
             conteoWhere++
         };
 
@@ -103,7 +103,7 @@ export async function getImportaciones(params: getImportacionesParametros) {
 };
 
 export async function setImportacionCompleta(id: number) {
-    try {  
+    try {
         const textoEstadoImportacion = `
             SELECT id
             FROM "estadoimportacion"
@@ -121,10 +121,44 @@ export async function setImportacionCompleta(id: number) {
         const valores = [estado, id];
 
         await client.query(texto, valores);
-        
+
         return;
     } catch (error) {
         console.error("Error en setImportacionCompleta: ", error);
+        throw error;
+    };
+};
+
+export async function deleteImportacion(id: number) {
+    try {
+        const texto = `
+            DELETE FROM "importacion"
+            WHERE id = $1
+        `;
+        const valores = [id];
+
+        await client.query(texto, valores);
+        return;
+    } catch (error) {
+        console.error("Error en deleteImportacion: ", error);
+        throw error;
+    };
+};
+
+export async function insertImportacion(id_estadoimportacion: number, id_proyecto: number) {
+    try {
+        const texto = `
+            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto)
+            VALUES ($1, $2)
+            RETURNING id
+        `;
+        const valores = [id_estadoimportacion, id_proyecto];
+
+        const importacion = await client.query(texto, valores);
+
+        return importacion.rows[0].id;
+    } catch (error) {
+        console.error("Error en insertEmpleado: ", error);
         throw error;
     };
 };
