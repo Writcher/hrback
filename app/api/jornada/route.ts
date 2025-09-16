@@ -1,5 +1,5 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { insertJornada } from "@/services/jornada/service.jornada";
+import { createJornada } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     try {
         const parametros = await request.json();
 
-        await insertJornada(parametros);
+        await createJornada(parametros);
 
         return NextResponse.json({ message: "Jornada creada." }, { status: 201 });
     } catch (error) {

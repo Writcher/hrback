@@ -1,45 +1,50 @@
 "use server"
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
-import { getImportacionJornadasParametros } from "@/lib/types/importacion";
-import { insertJornadaParametros, updateJornadaParametros, validateJornadaParametros } from "@/lib/types/jornada";
+import { getJornadasByImportacionParametros } from "@/lib/types/importacion";
+import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
-import { verifyExistenciaInstancias } from "../excel/service.excel";
-import { getEstadosJornada } from "../estadojornada/service.estadojornada";
+import { getMesQuincena } from "../excel/service.excel";
+import { getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
+import { getEmpleadoProyecto } from "../empleado/service.empleado";
+import { insertObservacion } from "../observacion/service.observacion";
+import { insertJornadaObservacion } from "../jornadaobservacion/service.jornadaobservacion";
+import { insertAusencia } from "../ausencia/service.ausencia";
 
 const client = db;
 
-export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros) {
+export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParametros) {
     try {
-        const offset = (params.pagina) * params.filasPorPagina;
-        const valoresBase: any = [params.id_empleado];
+        const offset = (parametros.pagina) * parametros.filasPorPagina;
+        const valoresBase: any = [parametros.id_empleado];
 
         let textoJoin = `
             JOIN "tipojornada" t ON j.id_tipojornada = t.id
-            LEFT JOIN "tipoausencia" ta ON j.id_tipoausencia = ta.id
+            LEFT JOIN "ausencia" a ON j.id_ausencia = a.id
+            LEFT JOIN "tipoausencia" ta ON a.id_tipoausencia = ta.id
             LEFT JOIN "jornadaobservacion" jo ON j.id = jo.id_jornada
             LEFT JOIN "observacion" o ON jo.id_observacion = o.id
         `;
 
         let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
 
-        if (params.filtroMes !== 0) {
+        if (parametros.filtroMes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
-            valoresBase.push(params.filtroMes);
+            valoresBase.push(parametros.filtroMes);
         }
 
-        if (params.filtroQuincena !== 0) {
+        if (parametros.filtroQuincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
-            valoresBase.push(params.filtroQuincena);
+            valoresBase.push(parametros.filtroQuincena);
         }
 
-        if (params.filtroMarcasIncompletas) {
+        if (parametros.filtroMarcasIncompletas) {
             textoFiltroBase += `AND (j.entrada IS NULL OR j.salida IS NULL) `;
         }
 
-        const valoresPrincipal = [...valoresBase, params.filasPorPagina, offset];
+        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
 
         let texto = `
@@ -84,32 +89,32 @@ export async function getEmpleadoJornadas(params: getEmpleadoJornadasParametros)
 
         return {
             jornadas: resultado.rows,
-            totalJornadas: parseInt(resultadoConteo.rows[0].total), // Ensure it's a number
+            totalJornadas: resultadoConteo.rows[0].total,
         };
     } catch (error) {
         console.error("Error en getEmpleadoJornadas: ", error);
         throw error;
     };
-};
+};//
 
-export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResumenParametros) {
+export async function getEmpleadoJornadasResumen(parametros: getEmpleadoJornadasResumenParametros) {
     try {
-        const valoresBase: any = [params.id_empleado];
+        const valoresBase: any = [parametros.id_empleado];
 
         let textoJoin = ''
 
         let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
 
-        if (params.filtroMes !== 0) {
+        if (parametros.filtroMes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
-            valoresBase.push(params.filtroMes);
+            valoresBase.push(parametros.filtroMes);
         };
 
-        if (params.filtroQuincena !== 0) {
+        if (parametros.filtroQuincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
-            valoresBase.push(params.filtroQuincena);
+            valoresBase.push(parametros.filtroQuincena);
         };
 
         let textoSumatorias = `
@@ -130,12 +135,12 @@ export async function getEmpleadoJornadasResumen(params: getEmpleadoJornadasResu
             resumen: resultado.rows[0],
         };
     } catch (error) {
-        console.error("Error en getEmpleadoJornadas: ", error);
+        console.error("Error en getEmpleadoJornadasResumen: ", error);
         throw error;
     };
-};
+};//
 
-export async function getJornadasResumen(params: getJornadasResumenParametros) {
+export async function getJornadasResumen(parametros: getJornadasResumenParametros) {
     try {
         const valoresBase: any = [];
 
@@ -143,16 +148,16 @@ export async function getJornadasResumen(params: getJornadasResumenParametros) {
 
         let textoFiltroBase = 'WHERE 1=1 ';
 
-        if (params.mes !== 0) {
+        if (parametros.mes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
-            valoresBase.push(params.mes);
+            valoresBase.push(parametros.mes);
         };
 
-        if (params.quincena !== 0) {
+        if (parametros.quincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
-            valoresBase.push(params.quincena);
+            valoresBase.push(parametros.quincena);
         };
 
         let textoSumatorias = `
@@ -178,24 +183,24 @@ export async function getJornadasResumen(params: getJornadasResumenParametros) {
         console.error("Error en getEmpleadoJornadas: ", error);
         throw error;
     };
-};
+};//
 
-export async function getImportacionJornadas(params: getImportacionJornadasParametros) {
+export async function getJornadasByImportacion(parametros: getJornadasByImportacionParametros) {
     try {
-        const estadosJornada = await getEstadosJornada();
+        const jornada_valida = await getEstadoJornadaValida()
 
-        const jornadaValidada = estadosJornada.find(e => e.nombre.toLowerCase() === 'validada');
+        const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const offset = (params.pagina) * params.filasPorPagina;
+        const valoresBase: any = [parametros.id_importacion];
 
-        const valoresBase: any = [params.id_importacion];
         let textoFiltroBase = 'WHERE j.id_importacion = $1 ';
 
-        if (params.filtroMarcasIncompletas) {
+        if (parametros.filtroMarcasIncompletas) {
             textoFiltroBase += 'AND (j.entrada IS NULL OR j.salida IS NULL) '
         };
 
-        const valoresPrincipal = [...valoresBase, params.filasPorPagina, offset];
+        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
+
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
 
         const texto = `
@@ -231,7 +236,7 @@ export async function getImportacionJornadas(params: getImportacionJornadasParam
             AND j.id_estadojornada != $2
         `;
 
-        const valoresConteoIncompleto = [params.id_importacion, jornadaValidada.id];
+        const valoresConteoIncompleto = [parametros.id_importacion, jornada_valida];
 
         const resultadoConteoIncompleto = await client.query(textoConteoIncompleto, valoresConteoIncompleto);
 
@@ -244,71 +249,72 @@ export async function getImportacionJornadas(params: getImportacionJornadasParam
         console.error("Error en getEmpleadoJornadas: ", error);
         throw error;
     };
-};
+};//
 
-export async function updateJornada(params: updateJornadaParametros) {
+export async function updateJornada(parametros: updateJornadaParametros) {
     try {
         const texto = `
             UPDATE jornada
-            SET entrada = $1,
+            SET 
+                entrada = $1,
                 salida = $2
             WHERE id = $3
             RETURNING id, entrada, salida
         `;
-        const valores = [params.entrada, params.salida, params.id_jornada];
 
-        const respuestaRaw = await client.query(texto, valores);
-        const respuesta = respuestaRaw.rows[0]
+        const valores = [parametros.entrada, parametros.salida, parametros.id_jornada];
 
-        return respuesta;
+        const respuesta = await client.query(texto, valores);
+
+        return respuesta.rows[0];
     } catch (error) {
         console.error("Error en updateJornada: ", error);
         throw error;
     };
-};
+};//
 
-export async function validateJornada(params: validateJornadaParametros) {
+export async function validateJornada(parametros: validateJornadaParametros) {
     try {
-        const estadosJornada = await getEstadosJornada();
-
-        const jornadaValidada = estadosJornada.find(e => e.nombre.toLowerCase() === 'validada');
+        const jornada_valida = await getEstadoJornadaValida();
 
         const texto = `
             UPDATE jornada
             SET id_estadojornada = $1
             WHERE id = $2
         `;
-        const valores = [jornadaValidada.id, params.id_jornada];
+        const valores = [jornada_valida, parametros.id_jornada];
 
-        const respuestaRaw = await client.query(texto, valores);
-        const respuesta = respuestaRaw.rows[0]
+        const respuesta = await client.query(texto, valores);
 
-        return respuesta;
+        return respuesta.rows[0];
     } catch (error) {
         console.error("Error en updateJornada: ", error);
         throw error;
     };
-};
+};//
 
-export async function deleteJornada(id: number) {
+export async function deleteJornada(parametros: deleteJornadaParametros) {
     try {
         const texto = `
             DELETE FROM "jornada"
             WHERE id = $1
         `;
-        const valores = [id];
+
+        const valores = [parametros.id];
 
         await client.query(texto, valores);
+
         return;
     } catch (error) {
         console.error("Error en deleteJornada: ", error);
         throw error;
     };
-};
+};//
 
-export async function insertJornada(parametros: insertJornadaParametros) {
+export async function createJornada(parametros: createJornadaParametros) {
     try {
-        await client.query("BEGIN");
+
+        await client.query('BEGIN');
 
         const {
             entrada,
@@ -318,81 +324,229 @@ export async function insertJornada(parametros: insertJornadaParametros) {
             fecha,
             id_tipojornada,
             id_tipoausencia,
+            duracionAusencia,
             observacion,
             id_empleado,
         } = parametros;
+
+        const duracionAusenciaNum = duracionAusencia === '' ? 1 : Number(duracionAusencia);
 
         const [dia, mes, año] = fecha.split("-").map(Number);
         const fechaIso = `${año}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
         const quincena = dia <= 15 ? 1 : 2;
 
-        const id_foraneas = await verifyExistenciaInstancias({ año, mes, quincena });
+        const getMesQuincenaParametros = {
+            año: año,
+            mes: mes,
+            quincena: quincena,
+        };
 
-        const textoProyecto = `SELECT id_proyecto FROM "empleado" WHERE id = $1`;
-        const valoresProyecto = [id_empleado];
-        const respuestaProyecto = await client.query(textoProyecto, valoresProyecto);
-        const id_proyecto = respuestaProyecto.rows[0].id_proyecto;
+        const ids = await getMesQuincena(getMesQuincenaParametros);
 
-        let id_jornadaCreada;
-        let id_jornadaTardeCreada;
+        const getEmpleadoProyectoParametros = {
+            id: id_empleado,
+        };
+
+        const id_proyecto = await getEmpleadoProyecto(getEmpleadoProyectoParametros)
+
+        let id_jornada;
+        let id_jornadaTarde;
+        let ids_jornadas_ausencia = [];
+
+        const jornada_valida = await getEstadoJornadaValida();
 
         if (id_tipoausencia === '') {
-            const textoNoAusente = `
-                INSERT INTO "jornada" (entrada, salida, fecha, id_empleado, id_proyecto, id_tipojornada, id_quincena, id_mes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING id
-            `;
-            const valoresNoAusente = [entrada, salida, fechaIso, id_empleado, id_proyecto, id_tipojornada, id_foraneas.id_quincena, id_foraneas.id_mes];
-            const respuestaNoAusente = await client.query(textoNoAusente, valoresNoAusente);
-            id_jornadaCreada = respuestaNoAusente.rows[0].id;
+            const insertJornadaParametros = {
+                fecha: fechaIso,
+                entrada: entrada,
+                salida: salida,
+                id_empleado: id_empleado,
+                id_proyecto: id_proyecto,
+                id_mes: ids.id_mes,
+                id_quincena: ids.id_quincena,
+                id_tipojornada: Number(id_tipojornada),
+                id_ausencia: null,
+                id_estadojornada: jornada_valida,
+                id_importacion: null,
+            };
+
+            id_jornada = await insertJornada(insertJornadaParametros);
         } else {
-            const textoAusente = `
-                INSERT INTO "jornada" (fecha, id_empleado, id_proyecto, id_tipojornada, id_quincena, id_mes, id_tipoausencia)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                RETURNING id
-            `;
-            const valoresAusente = [fechaIso, id_empleado, id_proyecto, id_tipojornada, id_foraneas.id_quincena, id_foraneas.id_mes, id_tipoausencia];
-            const respuestaAusente = await client.query(textoAusente, valoresAusente);
-            id_jornadaCreada = respuestaAusente.rows[0].id;
-        };
 
-        if (entradaTarde !== '' || salidaTarde !== '') {
-            const textoNoAusente = `
-                INSERT INTO "jornada" (entrada, salida, fecha, id_empleado, id_proyecto, id_tipojornada, id_quincena, id_mes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING id
-            `;
-            const valoresNoAusente = [entradaTarde, salidaTarde, fechaIso, id_empleado, id_proyecto, id_tipojornada, id_foraneas.id_quincena, id_foraneas.id_mes];
-            const respuestaNoAusente = await client.query(textoNoAusente, valoresNoAusente);
-            id_jornadaTardeCreada = respuestaNoAusente.rows[0].id;
-        };
+            const insertAusenciaParametros = {
+                id_empleado: id_empleado,
+                id_tipoausencia: Number(id_tipoausencia),
+            };
 
-        if (observacion !== '') {
-            const textoObservacion = `
-                INSERT INTO "observacion" (texto)
-                VALUES ($1)
-                RETURNING id
-            `;
-            const valoresObservacion = [observacion];
-            const respuestaObs = await client.query(textoObservacion, valoresObservacion);
-            const id_observacion = respuestaObs.rows[0].id;
+            const id_ausencia = await insertAusencia(insertAusenciaParametros);
 
-            const textoJornadaObservacion = `
-                INSERT INTO "jornadaobservacion" (id_jornada, id_observacion)
-                VALUES ($1, $2)
-            `;
-            await client.query(textoJornadaObservacion, [id_jornadaCreada, id_observacion]);
+            let fechaIteracion = new Date(año, mes - 1, dia, 12, 0, 0, 0);
 
-            if (entradaTarde !== '' || salidaTarde !== '') {
-                await client.query(textoJornadaObservacion, [id_jornadaTardeCreada, id_observacion]);
+            for (let i = 0; i < duracionAusenciaNum; i++) {
+
+                const diaActual = fechaIteracion.getDate();
+                const mesActual = fechaIteracion.getMonth() + 1;
+                const añoActual = fechaIteracion.getFullYear();
+
+                const fechaActualIso = `${añoActual}-${String(mesActual).padStart(2, "0")}-${String(diaActual).padStart(2, "0")}`;
+                const quincenaActual = diaActual <= 15 ? 1 : 2;
+
+                const getMesQuincenaParametros = {
+                    año: añoActual,
+                    mes: mesActual,
+                    quincena: quincenaActual,
+                };
+
+                const idsActual = await getMesQuincena(getMesQuincenaParametros);
+
+                const insertJornadaParametros = {
+                    fecha: fechaActualIso,
+                    entrada: null,
+                    salida: null,
+                    id_empleado: id_empleado,
+                    id_proyecto: id_proyecto,
+                    id_mes: idsActual.id_mes,
+                    id_quincena: idsActual.id_quincena,
+                    id_tipojornada: Number(id_tipojornada),
+                    id_ausencia: Number(id_ausencia),
+                    id_estadojornada: jornada_valida,
+                    id_importacion: null,
+                };
+
+                const id_jornada_ausencia = await insertJornada(insertJornadaParametros);
+
+                ids_jornadas_ausencia.push(id_jornada_ausencia);
+
+                if (i === 0) {
+                    id_jornada = id_jornada_ausencia;
+                };
+
+                fechaIteracion.setDate(fechaIteracion.getDate() + 1);
             };
         };
 
-        await client.query("COMMIT");
-        return;
+        if (entradaTarde !== '' || salidaTarde !== '') {
+            const insertJornadaParametros = {
+                fecha: fechaIso,
+                entrada: entradaTarde,
+                salida: salidaTarde,
+                id_empleado: id_empleado,
+                id_proyecto: id_proyecto,
+                id_mes: ids.id_mes,
+                id_quincena: ids.id_quincena,
+                id_tipojornada: Number(id_tipojornada),
+                id_ausencia: null,
+                id_estadojornada: jornada_valida,
+                id_importacion: null,
+            };
+
+            id_jornadaTarde = await insertJornada(insertJornadaParametros);
+        };
+
+        const insertObservacionParametros = {
+            observacion: "Entrada Manual"
+        };
+
+        const id_observacionManual = await insertObservacion(insertObservacionParametros);
+
+        if (id_tipoausencia === '') {
+
+            const insertJornadaObservacionParametros = {
+                id_jornada: id_jornada,
+                id_observacion: id_observacionManual,
+            };
+
+            await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+            if (entradaTarde !== '' || salidaTarde !== '') {
+
+                const insertJornadaObservacionParametros = {
+                    id_jornada: id_jornadaTarde,
+                    id_observacion: id_observacionManual,
+                };
+
+                await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+            };
+
+        } else {
+
+            for (const id_jornada_ausencia of ids_jornadas_ausencia) {
+
+                const insertJornadaObservacionParametros = {
+                    id_jornada: id_jornada_ausencia,
+                    id_observacion: id_observacionManual,
+                };
+
+                await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+            };
+        };
+
+        if (observacion !== '') {
+
+            const insertObservacionParametros = {
+                observacion: observacion,
+            };
+
+            const id_observacion = await insertObservacion(insertObservacionParametros);
+
+            if (id_tipoausencia === '') {
+
+                const insertJornadaObservacionParametros = {
+                    id_jornada: id_jornada,
+                    id_observacion: id_observacion,
+                };
+
+                await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+                if (entradaTarde !== '' || salidaTarde !== '') {
+
+                    const insertJornadaObservacionParametros = {
+                        id_jornada: id_jornadaTarde,
+                        id_observacion: id_observacion,
+                    };
+
+                    await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+                };
+            } else {
+                for (const id_jornada_ausencia of ids_jornadas_ausencia) {
+
+                    const insertJornadaObservacionParametros = {
+                        id_jornada: id_jornada_ausencia,
+                        id_observacion: id_observacion,
+                    };
+
+                    await insertJornadaObservacion(insertJornadaObservacionParametros);
+
+                };
+            };
+        };
+
+        await client.query('COMMIT');
     } catch (error) {
-        await client.query("ROLLBACK");
+        await client.query('ROLLBACK');
+        console.error("Error en createJornada: ", error);
+        throw error;
+    };
+};//
+
+export async function insertJornada(parametros: insertJornadaParametros) {
+    try {
+        const texto = ` 
+            INSERT INTO "jornada" (fecha, entrada, salida, id_empleado, id_proyecto, id_mes, id_quincena, id_tipojornada, id_ausencia, id_estadojornada, id_importacion)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id
+        `;
+
+        const valores = [parametros.fecha, parametros.entrada, parametros.salida, parametros.id_empleado, parametros.id_proyecto, parametros.id_mes, parametros.id_quincena, parametros.id_tipojornada, parametros.id_ausencia, parametros.id_estadojornada, parametros.id_importacion];
+
+        const resultado = await client.query(texto, valores);
+
+        return resultado.rows[0].id;
+    } catch (error) {
         console.error("Error en insertJornada: ", error);
         throw error;
     };
-};
+};//

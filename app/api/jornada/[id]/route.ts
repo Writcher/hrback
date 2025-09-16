@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const parametros = await request.json();
 
         if (parametros.accion === "validar") {
-            const respuesta = await validateJornada({ id_jornada});
+            await validateJornada({ id_jornada});
 
             return NextResponse.json({ message: "Jornada validada correctamente." }, { status: 200 });
         };
@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             salida
         };
 
-        const respuesta = updateJornada(updateJornadaParametro);
+        await updateJornada(updateJornadaParametro);
 
         return NextResponse.json({ message: "Jornada editada correctamente." }, { status: 200 });
     } catch (error) {
@@ -48,7 +48,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     try {
         const { id: id_jornada } = await params;
 
-        await deleteJornada(id_jornada);
+        const deleteJornadaParametros = {
+            id: id_jornada,
+        };
+
+        await deleteJornada(deleteJornadaParametros);
 
         return NextResponse.json({ message: "Jornada eliminada correctamente." }, { status: 200 });
     } catch (error) {

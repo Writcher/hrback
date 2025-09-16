@@ -12,7 +12,9 @@ export async function getTipoUsuarioPorId(parametros: getTipoUsuarioPorIdDTO) {
             FROM tipousuario
             WHERE id = $1
         `;
+
         const valores = [parametros.id_tipousuario];
+        
         const resultado = await client.query(texto, valores);
         
         return resultado.rows[0];

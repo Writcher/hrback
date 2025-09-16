@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ message: "Jornada creada." }, { status: 201 });
     } catch (error) {
-        console.error("Error creando Jornada:", error);
-        return NextResponse.json({ error: "Error creando Jornada" }, { status: 500 });
+        console.error("Error creando Empleado:", error);
+        return NextResponse.json({ error: "Error creando Empleado" }, { status: 500 });
     };
 };

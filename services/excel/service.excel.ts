@@ -1,89 +1,75 @@
 "use server";
 
-import { verificarInstanciasParametros, jornadasParametros } from "../../lib/types/excel";
+import { getMesQuincenaParametros, jornadasParametros } from "../../lib/types/excel";
+import { resumenJornadasExcel } from "../../lib/types/jornada";
 import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
-import { getEstadosImportacion } from "../estadoimportacion/service.estadoimportacion";
+import { getEstadoImportacionIncompleta, getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
 import { insertImportacion } from "../importacion/service.importacion";
-import { getEstadosJornada } from "../estadojornada/service.estadojornada";
-import { getEstadosEmpleado } from "../estadoempleado/service.estadoempleado";
+import { getEstadoJornadaRevision, getEstadoJornadaSinValidar } from "../estadojornada/service.estadojornada";
+import { getAñoByValor, insertAño } from "../año/service.año";
+import { getMesByMes, insertMes } from "../mes/service.mes";
+import { getQuincenaByMes, insertQuincena } from "../quincena/service.quincena";
+import { getEmpleadoByRelojProyecto, insertEmpleado } from "../empleado/service.empleado";
+import { insertJornada } from "../jornada/service.jornada";
 
 const client = db;
 
-export async function verifyExistenciaInstancias(params: verificarInstanciasParametros) {
+export async function getMesQuincena(parametros: getMesQuincenaParametros) {
   try {
     // Año
     let id_año: number;
-    const textoAño = `
-          SELECT valor
-          FROM "año"
-          WHERE valor = $1    
-        `;
-    const valoresAño = [params.año];
-    const resultadoAño = await client.query(textoAño, valoresAño);
-    if (resultadoAño.rowCount === 0) {
-      const textoInsertAño = `
-              INSERT INTO "año" (valor)
-              VALUES ($1)
-              RETURNING valor
-            `;
-      const valoresInsertAño = [params.año];
-      const resultadoInsertAño = await client.query(textoInsertAño, valoresInsertAño);
-      id_año = resultadoInsertAño.rows[0].valor;
+
+    const añoParametros = {
+      valor: parametros.año,
+    };
+
+    const año = await getAñoByValor(añoParametros);
+
+    if (año.rowCount === 0) {
+      id_año = await insertAño(añoParametros);
     } else {
-      id_año = resultadoAño.rows[0].valor;
+      id_año = año.rows[0].valor;
     };
 
     // Mes
     let id_mes: number;
-    const textoMes = `
-          SELECT id
-          FROM "mes"
-          WHERE mes = $1 AND id_año = $2
-        `;
-    const valoresMes = [params.mes, id_año];
-    const resultadoMes = await client.query(textoMes, valoresMes);
-    if (resultadoMes.rowCount === 0) {
-      const textoInsertMes = `
-              INSERT INTO "mes" (mes, id_año)
-              VALUES ($1, $2)
-              RETURNING id
-            `;
-      const valoresInsertMes = [params.mes, id_año];
-      const resultadoInsertMes = await client.query(textoInsertMes, valoresInsertMes);
-      id_mes = resultadoInsertMes.rows[0].id;
+
+    const mesParametros = {
+      mes: parametros.mes,
+      id_año: id_año,
+    };
+
+    const mes = await getMesByMes(mesParametros);
+
+    if (mes.rowCount === 0) {
+      id_mes = await insertMes(mesParametros);
     } else {
-      id_mes = resultadoMes.rows[0].id;
+      id_mes = mes.rows[0].id;
     };
 
     // Quincena
     let id_quincena: number;
-    const textoQuincena = `
-          SELECT id
-          FROM "quincena"
-          WHERE quincena = $1 AND id_mes = $2
-        `;
-    const valoresQuincena = [params.quincena, id_mes];
-    const resultadoQuincena = await client.query(textoQuincena, valoresQuincena);
-    if (resultadoQuincena.rowCount === 0) {
-      const textQuincenaInsert = `
-              INSERT INTO "quincena" (quincena, id_mes)
-              VALUES ($1, $2)
-              RETURNING id
-            `;
-      const valoresInsertQuincena = [params.quincena, id_mes];
-      const resultadoInsertQuincena = await client.query(textQuincenaInsert, valoresInsertQuincena);
-      id_quincena = resultadoInsertQuincena.rows[0].id;
+
+    const quincenaParametros = {
+      quincena: parametros.quincena,
+      id_mes: id_mes,
+    };
+
+    const quincena = await getQuincenaByMes(quincenaParametros);
+
+    if (quincena.rowCount === 0) {
+      id_quincena = await insertQuincena(quincenaParametros);
     } else {
-      id_quincena = resultadoQuincena.rows[0].id;
+      id_quincena = quincena.rows[0].id;
     };
 
     return { id_mes, id_quincena };
   } catch (error) {
-    console.error("Error en verifyInstancesExistance: ", error);
+    console.error("Error en verifyExistenciaInstancias: ", error);
     throw error;
   };
-};
+};//
 
 export async function processExcel(buffer: ArrayBuffer) {
   // Función mejorada para convertir número serial Excel a JS Date
@@ -459,63 +445,74 @@ export async function processExcel(buffer: ArrayBuffer) {
     empleadosJornada: empleadosProcessed,
     importacionCompleta: globalIsComplete
   };
-}
+};
 
-export async function insertJornada(params: jornadasParametros) {
+export async function createJornadas(parametros: jornadasParametros) {
   try {
-    const { empleadosJornadas, id_proyecto, id_tipojornada } = params;
+
+    await client.query('BEGIN');
+
+    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo } = parametros;
     let contador = 0;
     let fechaMemoria: Date = new Date(0);
     let quincenaMemoria: number = 0;
     let id_mes: number = 0;
     let id_quincena: number = 0;
 
-    const estadosImportacion = await getEstadosImportacion();
-
-    const importacionIncompleta = estadosImportacion.find(e => e.nombre.toLowerCase() === 'incompleta');
-    const importacionRevision = estadosImportacion.find(e => e.nombre.toLowerCase() === 'revisión');
-
-    const estadosJornada = await getEstadosJornada();
-
-    const jornadaSinValidar = estadosJornada.find(e => e.nombre.toLowerCase() === 'sin validar');
-    const jornadaRequiereRevision = estadosJornada.find(e => e.nombre.toLowerCase() === 'requiere revision');
-
-    const estadosEmpleado = await getEstadosEmpleado();
-
-    const empleadoActivo = estadosEmpleado.find(e => e.nombre.toLowerCase() === 'activo');
+    const importacion_incompleta = await getEstadoImportacionIncompleta();
+    const importacion_revision = await getEstadoImportacionRevision();
 
     let id_importacion;
 
     if (empleadosJornadas.importacionCompleta) {
-      id_importacion = await insertImportacion(importacionRevision.id, id_proyecto);
+
+      const insertImportacionParametros = {
+        id_estadoimportacion: importacion_revision,
+        id_proyecto: id_proyecto,
+        nombreArchivo: nombreArchivo,
+      };
+
+      id_importacion = await insertImportacion(insertImportacionParametros);
     } else {
-      id_importacion = await insertImportacion(importacionIncompleta.id, id_proyecto);
+
+      const insertImportacionParametros = {
+        id_estadoimportacion: importacion_incompleta,
+        id_proyecto: id_proyecto,
+        nombreArchivo: nombreArchivo,
+      };
+
+
+      id_importacion = await insertImportacion(insertImportacionParametros);
     };
 
-    const estaCompleta = empleadosJornadas.importacionCompleta;
+    const jornada_sinvalidar = await getEstadoJornadaSinValidar();
+    const jornada_revision = await getEstadoJornadaRevision();
+
+    const completa = empleadosJornadas.importacionCompleta;
 
     for (const [id_reloj, { nombre, registros, requiresManualReview }] of empleadosJornadas.empleadosJornada.entries()) {
 
       let id_empleado: number;
-      const textoEmpleado = `
-        SELECT id
-        FROM "empleado"
-        WHERE id_reloj = $1 AND id_proyecto = $2
-      `;
-      const valoresEmpleado = [id_reloj, id_proyecto];
-      const resultadoEmpleado = await client.query(textoEmpleado, valoresEmpleado);
 
-      if (resultadoEmpleado.rowCount === 0) {
-        const textoInsertEmpleado = `
-            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, id_estadoempleado)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id
-          `;
-        const valoresInsertEmpleado = [nombre, id_reloj, id_proyecto, empleadoActivo.id];
-        const resultadoInsertempleado = await client.query(textoInsertEmpleado, valoresInsertEmpleado);
-        id_empleado = resultadoInsertempleado.rows[0].id;
+      const empleadoParametros = {
+        id_reloj: Number(id_reloj),
+        id_proyecto: id_proyecto,
+      };
+
+      const empleado = await getEmpleadoByRelojProyecto(empleadoParametros);
+
+      if (empleado.rowCount === 0) {
+
+        const insertEmpleadoParametros = {
+          id_reloj: Number(id_reloj),
+          id_proyecto: id_proyecto,
+          legajo: '' as number | '',
+          nombre: nombre,
+        };
+
+        id_empleado = await insertEmpleado(insertEmpleadoParametros);
       } else {
-        id_empleado = resultadoEmpleado.rows[0].id;
+        id_empleado = empleado.rows[0].id;
       };
 
       const jornadasPorFecha: Map<string, Array<{ tipo: string; hora: string; orden: number }>> = new Map();
@@ -535,7 +532,7 @@ export async function insertJornada(params: jornadasParametros) {
 
       for (const [fecha, registrosFecha] of jornadasPorFecha.entries()) {
 
-        const fechaObjeto = new Date(fecha);
+        const fechaObjeto = new Date(fecha + "T12:00:00");
         const año = fechaObjeto.getFullYear();
         const mes = fechaObjeto.getMonth() + 1;
         const dia = fechaObjeto.getDate();
@@ -544,33 +541,34 @@ export async function insertJornada(params: jornadasParametros) {
         if (fechaMemoria.getFullYear() !== año || fechaMemoria.getMonth() + 1 !== mes || id_mes === 0 || id_quincena === 0 || quincenaMemoria !== quincena) {
           fechaMemoria = fechaObjeto;
           quincenaMemoria = quincena;
-          const params = { año, mes, quincena };
-          const foreignIds = await verifyExistenciaInstancias(params);
-          id_mes = foreignIds.id_mes;
-          id_quincena = foreignIds.id_quincena;
+
+          const getMesQuincenaParametros = { año, mes, quincena };
+
+          const ids = await getMesQuincena(getMesQuincenaParametros);
+
+          id_mes = ids.id_mes;
+          id_quincena = ids.id_quincena;
         };
 
         const jornadas = emparejarEntradaSalida(registrosFecha);
 
         for (const jornada of jornadas) {
           if (jornada.entrada || jornada.salida) {
-            const textoInsertJornada = `
-              INSERT INTO "jornada" (entrada, salida, fecha, id_tipojornada, id_empleado, id_proyecto, id_mes, id_quincena, id_importacion, id_estadojornada)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            `;
-            const valoresInsertJornada = [
-              jornada.entrada || null,
-              jornada.salida || null,
-              fecha,
-              id_tipojornada,
-              id_empleado,
-              id_proyecto,
-              id_mes,
-              id_quincena,
-              id_importacion,
-              requiresManualReview ? jornadaRequiereRevision.id : jornadaSinValidar.id
-            ];
-            await client.query(textoInsertJornada, valoresInsertJornada);
+            const insertJornadaParametros = {
+              fecha: fecha,
+              entrada: jornada.entrada || null,
+              salida: jornada.salida || null,
+              id_empleado: id_empleado,
+              id_proyecto: id_proyecto,
+              id_mes: id_mes,
+              id_quincena: id_quincena,
+              id_tipojornada: id_tipojornada,
+              id_ausencia: null,
+              id_estadojornada: requiresManualReview ? jornada_revision : jornada_sinvalidar,
+              id_importacion: id_importacion,
+            };
+
+            await insertJornada(insertJornadaParametros);
           };
         };
       };
@@ -578,12 +576,15 @@ export async function insertJornada(params: jornadasParametros) {
       contador++;
     };
 
-    return { id_importacion, estaCompleta }
+    await client.query('COMMIT');
+
+    return { id_importacion, completa }
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error("Error en insertJornada: ", error);
     throw error;
   };
-};
+};//
 
 function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; orden: number }>) {
   const jornadas: Array<{ entrada?: string; salida?: string }> = [];
@@ -621,17 +622,7 @@ function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; o
   return jornadas;
 };
 
-interface JornadaResumen {
-  legajo: string;
-  empleado: string;
-  suma_total: number;
-  suma_total_normal: number;
-  suma_total_50: number;
-  suma_total_100: number;
-  suma_total_feriado: number;
-}
-
-export async function generarExcel(resumenJornadas: JornadaResumen[]) {
+export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
   try {
     // Crear el workbook
     const workbook = new ExcelJS.Workbook();
@@ -681,7 +672,7 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: '2F5597' } // Azul oscuro profesional
+        fgColor: { argb: '2F5597' }
       };
       cell.border = {
         top: { style: 'thin', color: { argb: '000000' } },
@@ -698,7 +689,7 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
 
     // Aplicar estilos a las filas de datos
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber > 1) { // Skip header row
+      if (rowNumber > 1) {
         row.height = 20;
 
         // Alternar colores de fila para mejor legibilidad
@@ -819,10 +810,10 @@ export async function generarExcel(resumenJornadas: JornadaResumen[]) {
 
     // Generar el buffer
     const buffer = await workbook.xlsx.writeBuffer();
-    return buffer;
 
+    return buffer;
   } catch (error) {
     console.error('Error generando Excel:', error);
     throw new Error('Error al generar el archivo Excel');
   };
-};
+};//

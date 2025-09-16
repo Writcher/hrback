@@ -12,7 +12,9 @@ export async function getTiposAusencia(){
             nombre
             FROM tipoausencia
         `;
+
         const resultado = await client.query(texto);
+        
         return resultado.rows;
     } catch (error) {
         console.error("Error en getTiposAusencia: ", error);

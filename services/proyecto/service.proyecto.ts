@@ -12,7 +12,9 @@ export async function getProyectos(){
             nombre
             FROM proyecto
         `;
+
         const resultado = await client.query(texto);
+        
         return resultado.rows;
     } catch (error) {
         console.error("Error en getProyectos: ", error);

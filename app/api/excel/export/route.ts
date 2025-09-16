@@ -12,15 +12,26 @@ export async function GET(req: NextRequest) {
 
     try {
         const { searchParams } = new URL(req.url);
+
         const proyecto = Number(searchParams.get('proyecto'));
         const mes = Number(searchParams.get('mes'));
         const quincena = Number(searchParams.get('quincena'));
 
-        if (isNaN(proyecto) || isNaN(mes) || isNaN(quincena)) {
+        if (
+            isNaN(proyecto) ||
+            isNaN(mes) ||
+            isNaN(quincena)
+        ) {
             return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
         };
 
-        const resumenJornadas = await getJornadasResumen({ proyecto: proyecto, mes: mes, quincena: quincena });
+        const getJornadasResumenParametros = {
+            proyecto: proyecto,
+            mes: mes,
+            quincena: quincena,
+        };
+
+        const resumenJornadas = await getJornadasResumen(getJornadasResumenParametros);
 
         if (resumenJornadas.length === 0) {
             return NextResponse.json({ error: 'No se encontraron datos para los parámetros especificados' }, { status: 404 });
@@ -28,7 +39,13 @@ export async function GET(req: NextRequest) {
 
         const excelGenerado = await generarExcel(resumenJornadas);
 
-        const nombreExcel = await getFileName({ proyecto, mes, quincena });
+        const getFileNameParametros = {
+            proyecto: proyecto,
+            mes: mes,
+            quincena: quincena,
+        };
+
+        const nombreExcel = await getFileName(getFileNameParametros);
 
         const uint8Excel = new Uint8Array(excelGenerado);
 

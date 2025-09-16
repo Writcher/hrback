@@ -12,7 +12,9 @@ export async function getTiposJornada(){
             nombre
             FROM tipojornada
         `;
+        
         const resultado = await client.query(texto);
+
         return resultado.rows;
     } catch (error) {
         console.error("Error en getTiposJornada: ", error);

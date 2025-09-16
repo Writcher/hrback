@@ -1,7 +1,7 @@
 "use server"
 
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { deactivateEmpleado } from "@/services/empleado/service.empleado";
+import { deactivateEmpleado, editEmpleado } from "@/services/empleado/service.empleado";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
@@ -10,12 +10,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     try {
         const { id: id_empleado } = await params;
+        const parametros = await request.json();
 
-        await deactivateEmpleado(id_empleado);
+        if (parametros.accion === "editar") {
 
-        return NextResponse.json({ message: "Jornada eliminada correctamente." }, { status: 200 });
+            const editarEmpleadoParametros = {
+                id: id_empleado,
+                nombre: parametros.nombre as string,
+                id_reloj: parametros.id_reloj as number,
+                legajo: parametros.legajo as number,
+            };
+
+            await editEmpleado(editarEmpleadoParametros);
+
+            return NextResponse.json({ message: "Empleado editado correctamente." }, { status: 200 });
+        };
+
+        const desactivarEmpleadoParametros = {
+            id: id_empleado
+        };
+
+        await deactivateEmpleado(desactivarEmpleadoParametros);
+
+        return NextResponse.json({ message: "Empleado dado de baja correctamente." }, { status: 200 });
     } catch (error) {
-        console.error("Error eliminando jornada: ", error);
+        console.error("Error editando empleado: ", error);
         return NextResponse.json({ error: "Error interno" })
     };
 };

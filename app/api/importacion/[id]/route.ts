@@ -7,9 +7,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) return error;
 
     try {
-        const { id } = await params;
+        const { id: id_importacion } = await params;
 
-        await setImportacionCompleta(id);
+        const setImportacionCompletaParametros = {
+            id: id_importacion
+        };
+
+        await setImportacionCompleta(setImportacionCompletaParametros);
 
         return NextResponse.json({ message: "Jornada editada correctamente.", ok: true }, { status: 200 });
     } catch (error) {
@@ -25,7 +29,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     try {
         const { id: id_importacion } = await params;
 
-        await deleteImportacion(id_importacion);
+        const deleteImportacionParametros = {
+            id: id_importacion
+        };
+
+        await deleteImportacion(deleteImportacionParametros);
 
         return NextResponse.json({ message: "Importacion eliminada correctamente." }, { status: 200 });
     } catch (error) {

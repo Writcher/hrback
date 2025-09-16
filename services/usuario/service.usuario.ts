@@ -16,10 +16,9 @@ export async function getUsuarioPorCorreo(parametros: { correo: string }) {
 
         const valores = [correoMinuscula];
 
-        const respuestaRaw = await client.query(texto, valores);
-        const respuesta = respuestaRaw.rows[0];
+        const respuesta = await client.query(texto, valores);
 
-        return respuesta;
+        return respuesta.rows[0];
     } catch (error) {
         console.error("Error en getUsuarioPorCorreo: ", error);
         throw error;

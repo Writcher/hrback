@@ -6,7 +6,8 @@ export type getEmpleadosParametros = {
     pagina: number,
     filasPorPagina: number,
     ordenColumna: string,
-    ordenDireccion: string
+    ordenDireccion: string,
+    busquedaLegajo: number,
 };
 
 export type getEmpleadoJornadasParametros = {
@@ -33,6 +34,26 @@ export type getJornadasResumenParametros = {
 export type insertEmpleadoParametros = {
     id_reloj: number,
     id_proyecto: number,
+    legajo: number | '',
+    nombre: string,
+};
+
+export type editEmpleadoParametros = {
+    id_reloj: number,
     legajo: number,
     nombre: string,
+    id: number
+};
+
+export type deactivateEmpleadoParametros = {
+    id: number,
+};
+
+export type getEmpleadoByRelojProyectoParametros = {
+    id_reloj: number,
+    id_proyecto: number,
+};
+
+export type getEmpleadoProyectoParametros = {
+    id: number,
 };

@@ -1,7 +1,7 @@
 "use server"
 
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { getImportacionJornadas } from "@/services/jornada/service.jornada";
+import { getJornadasByImportacion } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
@@ -9,8 +9,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (error) return error;
 
     try {
+        
         const { id: id_importacion } = await params;
+
         const url = new URL(request.url);
+
         const filtroMarcasIncompletas = url.searchParams.get("filtroMarcasIncompletas") === "true";
         const pagina = Number(url.searchParams.get("pagina"));
         const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             filasPorPagina
         };
 
-        const respuesta = await getImportacionJornadas(getImportacionJornadasParametros);
+        const respuesta = await getJornadasByImportacion(getImportacionJornadasParametros);
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {

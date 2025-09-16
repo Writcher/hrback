@@ -13,6 +13,7 @@ export async function GET(
 
     try {
         const { id: id_empleado } = await params;
+
         const url = new URL(request.url);
         const filtroMes = Number(url.searchParams.get("filtroMes"));
         const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
@@ -21,7 +22,6 @@ export async function GET(
         const paginaParam = url.searchParams.get("pagina");
         const filasParam = url.searchParams.get("filasPorPagina");
         
-        // Validar parámetros básicos
         if (isNaN(filtroMes) || isNaN(filtroQuincena)) {
             return new Response(
                 JSON.stringify({ error: 'Faltan parametros' }),
@@ -31,12 +31,12 @@ export async function GET(
 
         let respuesta;
         
-        // Verificar si se pasaron parámetros de paginación válidos
         if (paginaParam && paginaParam !== '' && filasParam && filasParam !== '') {
+
             const pagina = Number(paginaParam);
+            
             const filasPorPagina = Number(filasParam);
             
-            // Validar que los parámetros de paginación sean números válidos
             if (isNaN(pagina) || isNaN(filasPorPagina)) {
                 return new Response(
                     JSON.stringify({ error: 'Parámetros de paginación inválidos' }),
@@ -52,13 +52,16 @@ export async function GET(
                 pagina,
                 filasPorPagina
             };
+
             respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);
         } else {
+
             const getEmpleadoJornadasResumenParametros = {
                 id_empleado: Number(id_empleado),
                 filtroMes,
                 filtroQuincena
             };
+
             respuesta = await getEmpleadoJornadasResumen(getEmpleadoJornadasResumenParametros);
         };
 

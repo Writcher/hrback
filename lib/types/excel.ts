@@ -1,6 +1,6 @@
 "use server";
 
-export type verificarInstanciasParametros = {
+export type getMesQuincenaParametros = {
     año: number;
     mes: number;
     quincena: number;
@@ -25,4 +25,5 @@ export type jornadasParametros = {
     empleadosJornadas: { empleadosJornada: empleadosJornada, importacionCompleta: boolean };
     id_proyecto: number;
     id_tipojornada: number;
+    nombreArchivo: string;
 };

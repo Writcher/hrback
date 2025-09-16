@@ -1,96 +1,62 @@
 "use server"
 
-import { getImportacionesParametros } from "@/lib/types/importacion";
+import { deleteImportacionParametros, getImportacionesParametros, insertImportacionParametros, setImportacionCompletaParametros } from "@/lib/types/importacion";
 import { db } from "@vercel/postgres";
+import { getEstadoImportacionCompleta } from "../estadoimportacion/service.estadoimportacion";
 
 const client = db;
 
 export async function getImportaciones(parametros: getImportacionesParametros) {
     try {
-        const textoEstadosImportacion = `
-            SELECT *
-            FROM "estadoimportacion"
-            WHERE nombre ILIKE 'Completa'
-                OR nombre ILIKE 'Incompleta'
-        `;
 
-        const { rows: estados } = await client.query(textoEstadosImportacion);
-
-        const importacionIncompleta = estados.find(e => e.nombre.toLowerCase() === 'incompleta');
-        const idEstadoIncompleta = importacionIncompleta.id;
+        const importacion_completa = await getEstadoImportacionCompleta();
 
         const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const valores: any = [parametros.filasPorPagina, offset];
-        const valoresConteo: any = [];
+        const valoresBase: any = [];
 
-        let textoFiltro = '';
-        let textoFiltroConteo = '';
-
-        let conteoWhere = 0;
+        let textoFiltroBase = 'WHERE 1=1';
 
         if (parametros.filtroIncompletas) {
-            if (conteoWhere === 0) {
-                textoFiltro += `
-                    WHERE id_estadoimportacion = $${valores.length + 1}::int
-                `;
-                textoFiltroConteo += `
-                    WHERE id_estadoimportacion = $${valoresConteo.length + 1}::int
-                `;
-            } else {
-                textoFiltro += `
-                    AND id_estadoimportacion = $${valores.length + 1}::int
-                `;
-                textoFiltroConteo += `
-                    AND id_estadoimportacion = $${valoresConteo.length + 1}::int
-                `;
-            };
-            valores.push(idEstadoIncompleta);
-            valoresConteo.push(idEstadoIncompleta);
-            conteoWhere++
+            textoFiltroBase += `
+                AND id_estadoimportacion != $${valoresBase.length + 1}::int
+            `;
+            valoresBase.push(importacion_completa);
         };
 
         if (parametros.filtroProyecto !== 0) {
-            if (conteoWhere === 0) {
-                textoFiltro += `
-                    WHERE id_proyecto = $${valores.length + 1}::int
-                `;
-                textoFiltroConteo += `
-                    WHERE id_proyecto = $${valoresConteo.length + 1}::int
-                `;
-            } else {
-                textoFiltro += `
-                    AND id_proyecto = $${valores.length + 1}::int
-                `;
-                textoFiltroConteo += `
-                    AND id_proyecto = $${valoresConteo.length + 1}::int
-                `;
-            };
-            valores.push(parametros.filtroProyecto);
-            valoresConteo.push(parametros.filtroProyecto);
-            conteoWhere++
+
+            textoFiltroBase += `
+                AND id_proyecto = $${valoresBase.length + 1}::int
+            `;
+
+            valoresBase.push(parametros.filtroProyecto);
         };
+
+        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
+        const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
 
         const texto = `
             SELECT
                 i.id,
                 i.fecha,
+                i.nombrearchivo AS nombre,
                 e.nombre AS nombreestado
             FROM "importacion" i
             JOIN "estadoimportacion" e ON i.id_estadoimportacion = e.id
-            ${textoFiltro}
-            LIMIT $1 OFFSET $2
+            ${textoFiltroBase}
+            ${textoLimite}
         `;
 
-        const resultado = await client.query(texto, valores);
+        const resultado = await client.query(texto, valoresPrincipal);
 
         const textoConteo = `
             SELECT COUNT(*) AS total
             FROM "importacion"
-            ${textoFiltroConteo}
+            ${textoFiltroBase}
         `;
 
-        const resultadoConteo = await client.query(textoConteo, valoresConteo);
+        const resultadoConteo = await client.query(textoConteo, valoresBase);
 
         return {
             importaciones: resultado.rows,
@@ -100,25 +66,19 @@ export async function getImportaciones(parametros: getImportacionesParametros) {
         console.error("Error en getImportaciones: ", error);
         throw error;
     };
-};
+};//
 
-export async function setImportacionCompleta(id: number) {
+export async function setImportacionCompleta(parametros: setImportacionCompletaParametros) {
     try {
-        const textoEstadoImportacion = `
-            SELECT id
-            FROM "estadoimportacion"
-            WHERE nombre ILIKE 'Completa'
-        `;
-
-        const estadoRaw = await client.query(textoEstadoImportacion);
-        const estado = estadoRaw.rows[0].id;
+        const importacion_completa = await getEstadoImportacionCompleta();
 
         const texto = `
             UPDATE importacion
             SET id_estadoimportacion = $1
             WHERE id = $2
         `;
-        const valores = [estado, id];
+
+        const valores = [importacion_completa, parametros.id];
 
         await client.query(texto, valores);
 
@@ -127,38 +87,39 @@ export async function setImportacionCompleta(id: number) {
         console.error("Error en setImportacionCompleta: ", error);
         throw error;
     };
-};
+};//
 
-export async function deleteImportacion(id: number) {
+export async function deleteImportacion(parametros: deleteImportacionParametros) {
     try {
         const texto = `
             DELETE FROM "importacion"
             WHERE id = $1
         `;
-        const valores = [id];
+
+        const valores = [parametros.id];
 
         await client.query(texto, valores);
-        return;
     } catch (error) {
         console.error("Error en deleteImportacion: ", error);
         throw error;
     };
-};
+};//
 
-export async function insertImportacion(id_estadoimportacion: number, id_proyecto: number) {
+export async function insertImportacion(parametros: insertImportacionParametros) {
     try {
         const texto = `
-            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto)
-            VALUES ($1, $2)
+            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo)
+            VALUES ($1, $2, $3)
             RETURNING id
         `;
-        const valores = [id_estadoimportacion, id_proyecto];
 
-        const importacion = await client.query(texto, valores);
+        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo];
 
-        return importacion.rows[0].id;
+        const respuesta = await client.query(texto, valores);
+
+        return respuesta.rows[0].id;
     } catch (error) {
-        console.error("Error en insertEmpleado: ", error);
+        console.error("Error en insertImportacion: ", error);
         throw error;
     };
-};
+};//
