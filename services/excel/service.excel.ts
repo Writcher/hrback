@@ -452,7 +452,7 @@ export async function createJornadas(parametros: jornadasParametros) {
 
     await client.query('BEGIN');
 
-    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo } = parametros;
+    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo, id_tipoimportacion } = parametros;
     let contador = 0;
     let fechaMemoria: Date = new Date(0);
     let quincenaMemoria: number = 0;
@@ -470,6 +470,7 @@ export async function createJornadas(parametros: jornadasParametros) {
         id_estadoimportacion: importacion_revision,
         id_proyecto: id_proyecto,
         nombreArchivo: nombreArchivo,
+        id_tipoimportacion: id_tipoimportacion
       };
 
       id_importacion = await insertImportacion(insertImportacionParametros);
@@ -479,6 +480,7 @@ export async function createJornadas(parametros: jornadasParametros) {
         id_estadoimportacion: importacion_incompleta,
         id_proyecto: id_proyecto,
         nombreArchivo: nombreArchivo,
+        id_tipoimportacion: id_tipoimportacion
       };
 
 
@@ -508,6 +510,7 @@ export async function createJornadas(parametros: jornadasParametros) {
           id_proyecto: id_proyecto,
           legajo: '' as number | '',
           nombre: nombre,
+          id_tipoempleado: '' as number | '',
         };
 
         id_empleado = await insertEmpleado(insertEmpleadoParametros);
@@ -644,7 +647,9 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       { header: 'Horas Normales', key: 'suma_total_normal', width: 20 },
       { header: 'Horas 50%', key: 'suma_total_50', width: 20 },
       { header: 'Horas 100%', key: 'suma_total_100', width: 20 },
-      { header: 'Horas Feriado', key: 'suma_total_feriado', width: 20 }
+      { header: 'Horas Feriado', key: 'suma_total_feriado', width: 20 },
+      { header: 'Horas Nocturnas', key: 'suma_total_nocturno', width: 20},
+      { header: 'Horas Nocturnas 100%', key: 'suma_total_nocturno_100', width: 20},
     ];
 
     // Agregar los datos
@@ -656,7 +661,9 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         suma_total_normal: parseFloat(resumen.suma_total_normal.toString()),
         suma_total_50: parseFloat(resumen.suma_total_50.toString()),
         suma_total_100: parseFloat(resumen.suma_total_100.toString()),
-        suma_total_feriado: parseFloat(resumen.suma_total_feriado.toString())
+        suma_total_feriado: parseFloat(resumen.suma_total_feriado.toString()),
+        suma_total_nocturno: parseFloat(resumen.suma_total_nocturno.toString()),
+        suma_total_nocturno_100: parseFloat(resumen.suma_total_nocturno_100.toString())
       });
     });
 
@@ -731,13 +738,17 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_normal: acc.suma_total_normal + parseFloat(resumen.suma_total_normal.toString()),
       suma_total_50: acc.suma_total_50 + parseFloat(resumen.suma_total_50.toString()),
       suma_total_100: acc.suma_total_100 + parseFloat(resumen.suma_total_100.toString()),
-      suma_total_feriado: acc.suma_total_feriado + parseFloat(resumen.suma_total_feriado.toString())
+      suma_total_feriado: acc.suma_total_feriado + parseFloat(resumen.suma_total_feriado.toString()),
+      suma_total_nocturno: acc.suma_total_nocturno + parseFloat(resumen.suma_total_nocturno.toString()),
+      suma_total_nocturno_100: acc.suma_total_nocturno_100 + parseFloat(resumen.suma_total_nocturno_100.toString())
     }), {
       suma_total: 0,
       suma_total_normal: 0,
       suma_total_50: 0,
       suma_total_100: 0,
-      suma_total_feriado: 0
+      suma_total_feriado: 0,
+      suma_total_nocturno: 0,
+      suma_total_nocturno_100: 0,
     });
 
     // Agregar fila vacía antes de los totales
@@ -751,7 +762,9 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_normal: totales.suma_total_normal,
       suma_total_50: totales.suma_total_50,
       suma_total_100: totales.suma_total_100,
-      suma_total_feriado: totales.suma_total_feriado
+      suma_total_feriado: totales.suma_total_feriado,
+      suma_total_nocturno: totales.suma_total_nocturno,
+      suma_total_nocturno_100: totales.suma_total_nocturno_100
     });
 
     // Estilizar la fila de totales
@@ -786,7 +799,7 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
     // Aplicar filtros automáticos (solo a los datos, no a los totales)
     worksheet.autoFilter = {
       from: 'A1',
-      to: `G${resumenJornadas.length + 1}`
+      to: `I${resumenJornadas.length + 1}`
     };
 
     // Congelar la primera fila

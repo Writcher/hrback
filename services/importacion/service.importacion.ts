@@ -108,12 +108,12 @@ export async function deleteImportacion(parametros: deleteImportacionParametros)
 export async function insertImportacion(parametros: insertImportacionParametros) {
     try {
         const texto = `
-            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo)
-            VALUES ($1, $2, $3)
+            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo, id_tipoimportacion)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
         `;
 
-        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo];
+        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo, parametros.id_tipoimportacion];
 
         const respuesta = await client.query(texto, valores);
 

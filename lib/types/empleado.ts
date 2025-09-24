@@ -8,6 +8,7 @@ export type getEmpleadosParametros = {
     ordenColumna: string,
     ordenDireccion: string,
     busquedaLegajo: number,
+    filtroTipoEmpleado: number,
 };
 
 export type getEmpleadoJornadasParametros = {
@@ -36,13 +37,15 @@ export type insertEmpleadoParametros = {
     id_proyecto: number,
     legajo: number | '',
     nombre: string,
+    id_tipoempleado: number | '',
 };
 
 export type editEmpleadoParametros = {
     id_reloj: number,
     legajo: number,
     nombre: string,
-    id: number
+    id: number,
+    id_tipoempleado: number,
 };
 
 export type deactivateEmpleadoParametros = {

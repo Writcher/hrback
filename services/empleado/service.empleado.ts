@@ -3,15 +3,19 @@
 import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
+import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 
 const client = db;
 
 export async function getEmpleados(parametros: getEmpleadosParametros) {
     try {
+
+        const empleado_mensualizado = await getTipoEmpleadoMensualizado();
+
         const offset = (parametros.pagina) * parametros.filasPorPagina;
         const valoresBase: any = [];
 
-        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto', 'id_estadoempleado'];
+        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto', 'id_estadoempleado', 'id_tipoempleado'];
 
         if (!columnasValidas.includes(parametros.ordenColumna)) {
             throw new Error('Columna Invalida');
@@ -30,6 +34,13 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
 
         const busquedaNombre = `%${parametros.busquedaNombre}%`;
 
+        if (parametros.filtroTipoEmpleado !== 0) {
+            textoFiltroBase += `
+                AND e.id_tipoempleado = $${valoresBase.length + 1}
+            `;
+            valoresBase.push(parametros.filtroTipoEmpleado);
+        };
+
         if (parametros.busquedaNombre !== "") {
             textoFiltroBase += `
                 AND unaccent(e.nombreapellido) ILIKE unaccent($${valoresBase.length + 1}) 
@@ -39,7 +50,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
 
         if (parametros.filtroProyecto !== 0) {
             textoFiltroBase += `
-                AND e.id_proyecto = $${valoresBase.length + 1} 
+                AND e.id_proyecto = $${valoresBase.length + 1}
             `;
             valoresBase.push(parametros.filtroProyecto);
         };
@@ -57,9 +68,13 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             ORDER BY ${columna} ${direccion}
         `;
 
-        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
+        const valoresPrincipal = [...valoresBase, empleado_mensualizado, parametros.filasPorPagina, offset];
 
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
+
+        const textoMensualizado = `
+            COALESCE((te.id = $${valoresPrincipal.length - 2}), false) AS es_mensualizado
+        `;
 
         let texto = `
             SELECT
@@ -69,10 +84,14 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
                 e.legajo,
                 e.id_proyecto,
                 p.nombre AS nombreproyecto,
-                ee.nombre AS estadoempleado
+                ee.nombre AS estadoempleado,
+                te.nombre AS tipoempleado,
+                te.id AS id_tipoempleado,
+                ${textoMensualizado}
             FROM "empleado" e
             JOIN "proyecto" p ON e.id_proyecto = p.id
             JOIN "estadoempleado" ee ON e.id_estadoempleado = ee.id
+            LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
             ${textoFiltroBase}
             ${textoOrden}
             ${textoLimite}
@@ -104,13 +123,15 @@ export async function insertEmpleado(parametros: insertEmpleadoParametros) {
 
         const legajo = parametros.legajo === '' ? null : parametros.legajo;
 
+        const id_tipoempleado = parametros.id_tipoempleado === '' ? null : parametros.id_tipoempleado;
+
         const texto = `
-            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, legajo, id_estadoempleado)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, legajo, id_estadoempleado, id_tipoempleado)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
         `;
 
-        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo.id];
+        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo.id, id_tipoempleado];
 
         const resultado = await client.query(texto, valores);
 
@@ -147,10 +168,10 @@ export async function editEmpleado(parametros: editEmpleadoParametros) {
 
         const texto = `
             UPDATE "empleado"
-            SET nombreapellido = $1, legajo = $2, id_reloj = $3
-            WHERE id = $4
+            SET nombreapellido = $1, legajo = $2, id_reloj = $3, id_tipoempleado = $4
+            WHERE id = $5
         `;
-        const valores = [parametros.nombre, parametros.legajo, parametros.id_reloj, parametros.id];
+        const valores = [parametros.nombre, parametros.legajo, parametros.id_reloj, parametros.id_tipoempleado, parametros.id];
 
         await client.query(texto, valores);
 

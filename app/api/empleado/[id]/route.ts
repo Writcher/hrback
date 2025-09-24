@@ -19,6 +19,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
                 nombre: parametros.nombre as string,
                 id_reloj: parametros.id_reloj as number,
                 legajo: parametros.legajo as number,
+                id_tipoempleado: parametros.id_tipoempleado as number,
             };
 
             await editEmpleado(editarEmpleadoParametros);

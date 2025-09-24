@@ -31,6 +31,8 @@ export type resumenJornadasExcel = {
     suma_total_50: number,
     suma_total_100: number,
     suma_total_feriado: number,
+    suma_total_nocturno: number,
+    suma_total_nocturno_100: number,
 };
 
 export type deleteJornadaParametros = {

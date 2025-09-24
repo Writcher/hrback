@@ -21,3 +21,20 @@ export async function getTiposJornada(){
         throw error;
     };
 };
+
+export async function getTipoJornadaAusencia() {
+    try {
+        const texto = `
+            SELECT id
+            FROM tipojornada
+            WHERE nombre = 'Ausencia'
+        `;
+
+        const resultado = await client.query(texto);
+
+        return resultado.rows[0].id;
+    } catch (error) {
+        console.error("Error en getTipoJornadaAusencia: ", error);
+        throw error;
+    };
+};

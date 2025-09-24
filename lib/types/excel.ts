@@ -26,4 +26,5 @@ export type jornadasParametros = {
     id_proyecto: number;
     id_tipojornada: number;
     nombreArchivo: string;
+    id_tipoimportacion: number;
 };

@@ -7,9 +7,12 @@ import { db } from "@vercel/postgres";
 import { getMesQuincena } from "../excel/service.excel";
 import { getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
 import { getEmpleadoProyecto } from "../empleado/service.empleado";
-import { insertObservacion } from "../observacion/service.observacion";
+import { getObservacionesResumen, insertObservacion } from "../observacion/service.observacion";
 import { insertJornadaObservacion } from "../jornadaobservacion/service.jornadaobservacion";
 import { insertAusencia } from "../ausencia/service.ausencia";
+import { getTipoAusenciaInjustificada } from "../tipoausencia/service.tipoausencia";
+import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
+import { getTipoJornadaAusencia } from "../tipojornada/service.tipojornada";
 
 const client = db;
 
@@ -99,9 +102,15 @@ export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParamet
 
 export async function getEmpleadoJornadasResumen(parametros: getEmpleadoJornadasResumenParametros) {
     try {
+        const ausencia_injustificada = await getTipoAusenciaInjustificada();
+
+        const jornada_no_ausencia = await getTipoJornadaAusencia();
+
         const valoresBase: any = [parametros.id_empleado];
 
-        let textoJoin = ''
+        let textoJoin = `
+            LEFT JOIN ausencia a ON j.id_ausencia = a.id 
+        `
 
         let textoFiltroBase = 'WHERE j.id_empleado = $1 ';
 
@@ -117,13 +126,30 @@ export async function getEmpleadoJornadasResumen(parametros: getEmpleadoJornadas
             valoresBase.push(parametros.filtroQuincena);
         };
 
+        const textoAsistencias = `
+            COUNT(j.id) FILTER (WHERE j.id_tipojornada != $${valoresBase.length + 1}) AS total_asistencias,
+        `;
+
+        valoresBase.push(jornada_no_ausencia);
+
+        const textoAusencias = `
+            COUNT(a.id) FILTER (WHERE a.id_tipoausencia = $${valoresBase.length + 1}) AS total_ausencias_injustificadas,
+            COUNT(a.id) FILTER (WHERE a.id_tipoausencia != $${valoresBase.length + 1}) AS total_ausencias_justificadas
+        `;
+
+        valoresBase.push(ausencia_injustificada);
+
         let textoSumatorias = `
             SELECT
-                SUM(CAST(j.total AS DECIMAL)) as suma_total,
-                SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
-                SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
-                SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
-                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado
+                SUM(CAST(j.total AS DECIMAL)) AS suma_total,
+                SUM(CAST(j.total_normal AS DECIMAL)) AS suma_total_normal,
+                SUM(CAST(j.total_50 AS DECIMAL)) AS suma_total_50,
+                SUM(CAST(j.total_100 AS DECIMAL)) AS suma_total_100,
+                SUM(CAST(j.total_feriado AS DECIMAL)) AS suma_total_feriado,
+                SUM(CAST(j.total_nocturno AS DECIMAL)) AS suma_total_nocturno,
+                SUM(CAST(j.total_nocturno_100 AS DECIMAL)) AS suma_total_nocturno_100,
+                ${textoAsistencias}
+                ${textoAusencias}
             FROM "jornada" j
             ${textoJoin}
             ${textoFiltroBase}
@@ -168,7 +194,9 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
                 SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
                 SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
                 SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
-                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado
+                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado,
+                SUM(CAST(j.total_nocturno AS DECIMAL)) as suma_total_nocturno,
+                SUM(CAST(j.total_nocturno_100 AS DECIMAL)) as suma_total_nocturno_100
             FROM "jornada" j
             ${textoJoin}
             ${textoFiltroBase}

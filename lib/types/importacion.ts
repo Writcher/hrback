@@ -26,4 +26,5 @@ export type insertImportacionParametros = {
     id_estadoimportacion: number, 
     id_proyecto: number, 
     nombreArchivo: string,
+    id_tipoimportacion: number
 };
