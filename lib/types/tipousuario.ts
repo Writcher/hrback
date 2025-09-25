@@ -1,3 +1,3 @@
-export type getTipoUsuarioPorIdDTO = {
+export type getTipoUsuarioPorIdParametros = {
     id_tipousuario: number;
 };
