@@ -28,7 +28,3 @@ export type editUsuarioParametros = {
 export type deleteUsuarioParametros = {
     id: number,
 };
-
-export type getUsuarioContraseñaPorIdParametros = {
-    id: number,
-};

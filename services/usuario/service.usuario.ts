@@ -1,6 +1,6 @@
 "use server"
 
-import { deleteUsuarioParametros, editUsuarioParametros, getUsuarioContraseñaPorIdParametros, getUsuarioPorCorreoParametros, getUsuariosParametros, insertUsuarioParametros } from "@/lib/types/usuario";
+import { deleteUsuarioParametros, editUsuarioParametros, getUsuarioPorCorreoParametros, getUsuariosParametros, insertUsuarioParametros } from "@/lib/types/usuario";
 import { db } from "@vercel/postgres";
 import bcrypt from "bcryptjs";
 
@@ -11,7 +11,7 @@ export async function getUsuarioPorCorreo(parametros: getUsuarioPorCorreoParamet
         const correoMinuscula = parametros.correo.toLowerCase();
 
         const texto = `
-            SELECT id, id_tipousuario
+            SELECT *
             FROM "usuario"
             WHERE correo ILIKE $1
         `;
@@ -160,25 +160,6 @@ export async function deleteUsuario(parametros: deleteUsuarioParametros) {
         await client.query(texto, valores);
     } catch (error) {
         console.error("Error en deleteUsuario: ", error);
-        throw error;
-    };
-};
-
-export async function getUsuarioContraseñaPorId(parametros: getUsuarioContraseñaPorIdParametros) {
-    try {
-        const texto = `
-            SELECT contraseña
-            FROM "usuario"
-            WHERE id = $1
-        `;
-
-        const valores = [parametros.id];
-
-        const respuesta = await client.query(texto, valores);
-
-        return respuesta.rows[0].contraseña;
-    } catch (error) {
-        console.error("Error en getUsuarioContraseñaPorId: ", error);
         throw error;
     };
 };

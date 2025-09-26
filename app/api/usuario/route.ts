@@ -1,5 +1,6 @@
+"use server"
+
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { insertEmpleado } from "@/services/empleado/service.empleado";
 import { insertUsuario } from "@/services/usuario/service.usuario";
 import { NextRequest, NextResponse } from "next/server";
 
