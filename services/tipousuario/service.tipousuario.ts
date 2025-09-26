@@ -1,11 +1,11 @@
 "use server"
 
-import { getTipoUsuarioPorIdDTO } from "@/lib/types/tipousuario";
+import { getTipoUsuarioPorIdParametros } from "@/lib/types/tipousuario";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getTipoUsuarioPorId(parametros: getTipoUsuarioPorIdDTO) {
+export async function getTipoUsuarioPorId(parametros: getTipoUsuarioPorIdParametros) {
     try {
         const texto = `
             SELECT *
@@ -20,6 +20,24 @@ export async function getTipoUsuarioPorId(parametros: getTipoUsuarioPorIdDTO) {
         return resultado.rows[0];
     } catch (error) {
         console.error("Error en getTipoUsuarioPorId: ", error);
+        throw error;
+    };
+};
+
+export async function getTiposUsuario(){
+    try {
+        const texto = `
+            SELECT 
+            id, 
+            nombre
+            FROM tipousuario
+        `;
+        
+        const resultado = await client.query(texto);
+
+        return resultado.rows;
+    } catch (error) {
+        console.error("Error en getTiposUsuario: ", error);
         throw error;
     };
 };
