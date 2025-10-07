@@ -1,5 +1,6 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { deleteJornada, updateJornada, validateJornada } from "@/services/jornada/service.jornada";
+import { updateAusenciaTipoAusencia } from "@/services/ausencia/service.ausencia";
+import { deleteJornada, getJornadaAusencia, updateJornada, validateJornada } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
@@ -11,9 +12,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const parametros = await request.json();
 
         if (parametros.accion === "validar") {
-            await validateJornada({ id_jornada});
+            await validateJornada({ id_jornada });
 
             return NextResponse.json({ message: "Jornada validada correctamente." }, { status: 200 });
+        };
+
+        if (parametros.accion === "justificar") {
+
+            const id_tipoAusencia = parametros.tipoAusencia as number;
+
+            if (isNaN(id_tipoAusencia)) {
+                return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+            };
+
+            const getJornadaAusenciaParametros = {
+                id: id_jornada,
+            };
+
+            const ausencia = await getJornadaAusencia(getJornadaAusenciaParametros);
+
+            const updateAusenciaTipoAusenciaParametros = {
+                id: ausencia,
+                id_tipoAusencia
+            };
+
+            await updateAusenciaTipoAusencia(updateAusenciaTipoAusenciaParametros);
+
+            return NextResponse.json({ message: "Ausencia validada correctamente." }, { status: 200 });
         };
 
         const entrada = parametros.entrada as string;

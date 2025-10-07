@@ -2,16 +2,15 @@
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getJornadasByImportacionParametros } from "@/lib/types/importacion";
-import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros } from "@/lib/types/jornada";
+import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { getMesQuincena } from "../excel/service.excel";
 import { getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
 import { getEmpleadoProyecto } from "../empleado/service.empleado";
-import { getObservacionesResumen, insertObservacion } from "../observacion/service.observacion";
+import { insertObservacion } from "../observacion/service.observacion";
 import { insertJornadaObservacion } from "../jornadaobservacion/service.jornadaobservacion";
 import { insertAusencia } from "../ausencia/service.ausencia";
 import { getTipoAusenciaInjustificada } from "../tipoausencia/service.tipoausencia";
-import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 import { getTipoJornadaAusencia } from "../tipojornada/service.tipojornada";
 
 const client = db;
@@ -34,18 +33,26 @@ export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParamet
         if (parametros.filtroMes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(parametros.filtroMes);
-        }
+        };
 
         if (parametros.filtroQuincena !== 0) {
-            const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
-            textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
+            textoFiltroBase += `AND q.quincena = $${valoresBase.length + 1} `;
             valoresBase.push(parametros.filtroQuincena);
-        }
+        };
 
         if (parametros.filtroMarcasIncompletas) {
             textoFiltroBase += `AND (j.entrada IS NULL OR j.salida IS NULL) `;
-        }
+        };
+
+        if (parametros.ausencias) {
+            textoFiltroBase += `AND j.id_ausencia IS NOT NULL `;
+        };
+
+        if (parametros.filtroTipoAusencia !== 0) {
+            textoFiltroBase += `AND a.id_tipoausencia = $${valoresBase.length + 1} `
+            valoresBase.push(parametros.filtroTipoAusencia);
+        };
 
         const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
@@ -147,7 +154,6 @@ export async function getEmpleadoJornadasResumen(parametros: getEmpleadoJornadas
                 SUM(CAST(j.total_100 AS DECIMAL)) AS suma_total_100,
                 SUM(CAST(j.total_feriado AS DECIMAL)) AS suma_total_feriado,
                 SUM(CAST(j.total_nocturno AS DECIMAL)) AS suma_total_nocturno,
-                SUM(CAST(j.total_nocturno_100 AS DECIMAL)) AS suma_total_nocturno_100,
                 ${textoAsistencias}
                 ${textoAusencias}
             FROM "jornada" j
@@ -196,7 +202,6 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
                 SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
                 SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado,
                 SUM(CAST(j.total_nocturno AS DECIMAL)) as suma_total_nocturno,
-                SUM(CAST(j.total_nocturno_100 AS DECIMAL)) as suma_total_nocturno_100
             FROM "jornada" j
             ${textoJoin}
             ${textoFiltroBase}
@@ -471,11 +476,7 @@ export async function createJornada(parametros: createJornadaParametros) {
             id_jornadaTarde = await insertJornada(insertJornadaParametros);
         };
 
-        const insertObservacionParametros = {
-            observacion: "Entrada Manual"
-        };
-
-        const id_observacionManual = await insertObservacion(insertObservacionParametros);
+        const id_observacionManual = 1;
 
         if (id_tipoausencia === '') {
 
@@ -578,3 +579,22 @@ export async function insertJornada(parametros: insertJornadaParametros) {
         throw error;
     };
 };//
+
+export async function getJornadaAusencia(parametros: getJornadaAusenciaParametros) {
+    try {
+        const texto = `
+            SELECT id_ausencia
+            FROM "jornada"
+            WHERE id = $1
+        `;
+
+        const valores = [parametros.id];
+
+        const resultado = await client.query(texto, valores);
+
+        return resultado.rows[0].id_ausencia;
+    } catch (error) {
+        console.error("Error en getJornadaAusencia: ", error);
+        throw error;
+    };
+};
