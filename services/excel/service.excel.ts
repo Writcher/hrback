@@ -649,7 +649,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       { header: 'Horas 100%', key: 'suma_total_100', width: 20 },
       { header: 'Horas Feriado', key: 'suma_total_feriado', width: 20 },
       { header: 'Horas Nocturnas', key: 'suma_total_nocturno', width: 20},
-      { header: 'Horas Nocturnas 100%', key: 'suma_total_nocturno_100', width: 20},
     ];
 
     // Agregar los datos
@@ -663,7 +662,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         suma_total_100: parseFloat(resumen.suma_total_100.toString()),
         suma_total_feriado: parseFloat(resumen.suma_total_feriado.toString()),
         suma_total_nocturno: parseFloat(resumen.suma_total_nocturno.toString()),
-        suma_total_nocturno_100: parseFloat(resumen.suma_total_nocturno_100.toString())
       });
     });
 
@@ -740,7 +738,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_100: acc.suma_total_100 + parseFloat(resumen.suma_total_100.toString()),
       suma_total_feriado: acc.suma_total_feriado + parseFloat(resumen.suma_total_feriado.toString()),
       suma_total_nocturno: acc.suma_total_nocturno + parseFloat(resumen.suma_total_nocturno.toString()),
-      suma_total_nocturno_100: acc.suma_total_nocturno_100 + parseFloat(resumen.suma_total_nocturno_100.toString())
     }), {
       suma_total: 0,
       suma_total_normal: 0,
@@ -748,7 +745,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_100: 0,
       suma_total_feriado: 0,
       suma_total_nocturno: 0,
-      suma_total_nocturno_100: 0,
     });
 
     // Agregar fila vacía antes de los totales
@@ -764,7 +760,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_100: totales.suma_total_100,
       suma_total_feriado: totales.suma_total_feriado,
       suma_total_nocturno: totales.suma_total_nocturno,
-      suma_total_nocturno_100: totales.suma_total_nocturno_100
     });
 
     // Estilizar la fila de totales

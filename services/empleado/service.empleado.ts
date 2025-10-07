@@ -30,7 +30,8 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
         const columna = parametros.ordenColumna;
         const direccion = parametros.ordenDireccion.toUpperCase();
 
-        let textoFiltroBase = 'WHERE 1=1 '
+        let textoFiltroBase = 'WHERE 1=1 ';
+        let textoJoin = '';
 
         const busquedaNombre = `%${parametros.busquedaNombre}%`;
 
@@ -64,6 +65,38 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             valoresBase.push(busquedaLegajo);
         };
 
+        if (parametros.filtroTipoAusencia !== -1) {
+            textoJoin += `
+                JOIN jornada j ON e.id = j.id_empleado
+            `;
+            textoFiltroBase += `
+                AND j.id_ausencia IS NOT NULL
+            `;
+
+            if (parametros.filtroTipoAusencia !== 0) {
+                textoJoin += `
+                    JOIN ausencia a ON j.id_ausencia = a.id
+                `;
+                textoFiltroBase += `
+                    AND a.id_tipoausencia = $${valoresBase.length + 1}
+                `;
+                valoresBase.push(parametros.filtroTipoAusencia);
+            };
+
+            if (parametros.filtroMes !== 0) {
+                textoFiltroBase += `
+                    AND j.id_mes = $${valoresBase.length + 1}
+                `;
+                valoresBase.push(parametros.filtroMes);
+            };
+
+            if (parametros.filtroQuincena !== 0) {
+                textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
+                textoFiltroBase += `AND q.quincena = $${valoresBase.length + 1} `;
+                valoresBase.push(parametros.filtroQuincena);
+            };
+        };
+
         const textoOrden = `
             ORDER BY ${columna} ${direccion}
         `;
@@ -77,7 +110,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
         `;
 
         let texto = `
-            SELECT
+            SELECT DISTINCT
                 e.id,
                 e.nombreapellido AS nombre,
                 e.id_reloj,
@@ -92,6 +125,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             JOIN "proyecto" p ON e.id_proyecto = p.id
             JOIN "estadoempleado" ee ON e.id_estadoempleado = ee.id
             LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
+            ${textoJoin}
             ${textoFiltroBase}
             ${textoOrden}
             ${textoLimite}
@@ -102,6 +136,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
         let textoConteo = `
             SELECT COUNT(*) AS total
             FROM "empleado" e
+            ${textoJoin}
             ${textoFiltroBase}
         `;
 

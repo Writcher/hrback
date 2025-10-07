@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
         const ordenDireccion = url.searchParams.get("ordenDireccion");
         const busquedaLegajo = Number(url.searchParams.get("busquedaLegajo"));
         const filtroTipoEmpleado = Number(url.searchParams.get("filtroTipoEmpleado"));
+        const filtroTipoAusencia = Number(url.searchParams.get("filtroTipoAusencia"));
+        const filtroMes = Number(url.searchParams.get("filtroMes"));
+        const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
 
         if (
             busquedaNombre === null ||
@@ -28,7 +31,10 @@ export async function GET(request: NextRequest) {
             isNaN(pagina) ||
             isNaN(filasPorPagina) ||
             isNaN(busquedaLegajo) ||
-            isNaN(filtroTipoEmpleado)
+            isNaN(filtroTipoEmpleado) ||
+            isNaN(filtroTipoAusencia) ||
+            isNaN(filtroMes) ||
+            isNaN(filtroQuincena)
         ) {
             return new Response(
                 JSON.stringify({ error: 'Faltan parametros' }),
@@ -45,6 +51,9 @@ export async function GET(request: NextRequest) {
             ordenDireccion,
             busquedaLegajo,
             filtroTipoEmpleado,
+            filtroTipoAusencia,
+            filtroMes,
+            filtroQuincena
         };
 
         const respuesta = await getEmpleados(getEmpleadosParametros);

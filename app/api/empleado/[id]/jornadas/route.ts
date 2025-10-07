@@ -18,6 +18,8 @@ export async function GET(
         const filtroMes = Number(url.searchParams.get("filtroMes"));
         const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
         const filtroMarcasIncompletas = url.searchParams.get("filtroMarcasIncompletas") === "true";
+        const ausencias = url.searchParams.get("ausencias") === "true";
+        const filtroTipoAusencia = Number(url.searchParams.get("filtroTipoAusencia"));
         
         const paginaParam = url.searchParams.get("pagina");
         const filasParam = url.searchParams.get("filasPorPagina");
@@ -37,7 +39,7 @@ export async function GET(
             
             const filasPorPagina = Number(filasParam);
             
-            if (isNaN(pagina) || isNaN(filasPorPagina)) {
+            if (isNaN(pagina) || isNaN(filasPorPagina) || isNaN(filtroTipoAusencia)) {
                 return new Response(
                     JSON.stringify({ error: 'Parámetros de paginación inválidos' }),
                     { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -50,7 +52,9 @@ export async function GET(
                 filtroQuincena,
                 filtroMarcasIncompletas,
                 pagina,
-                filasPorPagina
+                filasPorPagina,
+                ausencias,
+                filtroTipoAusencia,
             };
 
             respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);

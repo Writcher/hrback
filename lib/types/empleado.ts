@@ -9,6 +9,9 @@ export type getEmpleadosParametros = {
     ordenDireccion: string,
     busquedaLegajo: number,
     filtroTipoEmpleado: number,
+    filtroTipoAusencia: number,
+    filtroMes: number,
+    filtroQuincena: number,
 };
 
 export type getEmpleadoJornadasParametros = {
@@ -18,6 +21,8 @@ export type getEmpleadoJornadasParametros = {
     filtroMarcasIncompletas: boolean,
     pagina: number,
     filasPorPagina: number,
+    ausencias: boolean,
+    filtroTipoAusencia: number,
 };
 
 export type getEmpleadoJornadasResumenParametros = {
