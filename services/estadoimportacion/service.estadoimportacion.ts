@@ -42,7 +42,7 @@ export async function getEstadoImportacionRevision() {
         const texto = `
             SELECT id
             FROM estadoimportacion
-            WHERE nombre = 'Revisión'
+            WHERE nombre = 'Revision'
         `;
 
         const resultado = await client.query(texto);

@@ -1,5 +1,5 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { getTiposUsuario } from "@/services/tipousuario/service.tipousuario";
+import { getTurnos } from "@/services/turno/service.turno";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -7,11 +7,11 @@ export async function GET(request: NextRequest) {
     if (error) return error;
     
     try {
-        const respuesta = await getTiposUsuario();
+        const respuesta = await getTurnos();
         
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando tipos de usuario:", error);
+        console.error("Error buscando turnos:", error);
         return NextResponse.json({ error: "Error interno" }, { status: 500 });
     };
 };

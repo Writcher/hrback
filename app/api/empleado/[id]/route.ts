@@ -1,5 +1,3 @@
-"use server"
-
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { deactivateEmpleado, editEmpleado } from "@/services/empleado/service.empleado";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,6 +18,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
                 id_reloj: parametros.id_reloj as number,
                 legajo: parametros.legajo as number,
                 id_tipoempleado: parametros.id_tipoempleado as number,
+                id_turno: parametros.id_turno as number,
+                id_proyecto: parametros.id_proyecto as number,
             };
 
             await editEmpleado(editarEmpleadoParametros);

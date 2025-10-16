@@ -1,5 +1,3 @@
-"use server"
-
 import { getUsuarioPorCorreo, getUsuarios } from "@/services/usuario/service.usuario";
 import { NextRequest, NextResponse } from "next/server";
 

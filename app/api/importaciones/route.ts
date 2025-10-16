@@ -1,5 +1,3 @@
-"use server"
-
 import { verifyAuthToken } from '@/lib/utils/authutils';
 import { getImportaciones } from '@/services/importacion/service.importacion';
 import { NextRequest, NextResponse } from 'next/server';

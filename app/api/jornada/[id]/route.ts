@@ -11,8 +11,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const { id: id_jornada } = await params;
         const parametros = await request.json();
 
+        const id_usuariomodificacion = Number(payload.id);
+
         if (parametros.accion === "validar") {
-            await validateJornada({ id_jornada });
+            await validateJornada({ id_jornada, id_usuariomodificacion });
 
             return NextResponse.json({ message: "Jornada validada correctamente." }, { status: 200 });
         };
@@ -54,7 +56,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const updateJornadaParametro = {
             id_jornada,
             entrada,
-            salida
+            salida,
+            id_usuariomodificacion
         };
 
         await updateJornada(updateJornadaParametro);

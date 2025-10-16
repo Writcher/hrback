@@ -14,6 +14,10 @@ export type getEmpleadosParametros = {
     filtroQuincena: number,
 };
 
+export type getEmpleadosPresentesParametros = {
+    filtroProyecto: number,
+};
+
 export type getEmpleadoJornadasParametros = {
     id_empleado: number,
     filtroMes: number,
@@ -51,6 +55,8 @@ export type editEmpleadoParametros = {
     nombre: string,
     id: number,
     id_tipoempleado: number,
+    id_turno: number,
+    id_proyecto: number,
 };
 
 export type deactivateEmpleadoParametros = {
@@ -64,4 +70,8 @@ export type getEmpleadoByRelojProyectoParametros = {
 
 export type getEmpleadoProyectoParametros = {
     id: number,
+};
+
+export type getProyectoEmpleadosNocturnosParametros = {
+    id_proyecto: number;
 };

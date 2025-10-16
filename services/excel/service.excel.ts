@@ -6,12 +6,15 @@ import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
 import { getEstadoImportacionIncompleta, getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
 import { insertImportacion } from "../importacion/service.importacion";
-import { getEstadoJornadaRevision, getEstadoJornadaSinValidar } from "../estadojornada/service.estadojornada";
+import { getEstadoJornadaRevision, getEstadoJornadaSinValidar, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
 import { getAñoByValor, insertAño } from "../año/service.año";
 import { getMesByMes, insertMes } from "../mes/service.mes";
 import { getQuincenaByMes, insertQuincena } from "../quincena/service.quincena";
-import { getEmpleadoByRelojProyecto, insertEmpleado } from "../empleado/service.empleado";
+import { getEmpleadoByRelojProyecto, getProyectoEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
 import { insertJornada } from "../jornada/service.jornada";
+import { getFuenteMarcaControl } from "../fuentemarca/service.fuentemarca";
+import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
+import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
 
 const client = db;
 
@@ -71,7 +74,20 @@ export async function getMesQuincena(parametros: getMesQuincenaParametros) {
   };
 };//
 
-export async function processExcel(buffer: ArrayBuffer) {
+export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffer, id_proyecto: number }) {
+
+  const modalidad_proyecto = await getProyectoModalidadTrabajo({ id_proyecto });
+  const modalidad_corrido = await getModalidadTrabajoCorrido();
+
+  // CHANGE 1: Fetch night shift employees once at the beginning
+  const empleadosNocturnosArray = await getProyectoEmpleadosNocturnos({ id_proyecto });
+  const empleadosNocturnos = new Set(empleadosNocturnosArray);
+
+  // Determinar si es modalidad corrido
+  const esModalidadCorrido = modalidad_proyecto === modalidad_corrido;
+
+  const TOLERANCIA_MINUTOS = 5;
+
   // Función mejorada para convertir número serial Excel a JS Date
   function excelDateToJSDate(serial: number): Date {
     const utcDays = Math.floor(serial - 25569);
@@ -87,7 +103,7 @@ export async function processExcel(buffer: ArrayBuffer) {
 
     date.setUTCHours(hours, minutes, seconds, 0);
     return date;
-  }
+  };
 
   // Función para extraer fecha de un valor de celda
   function extractDate(cellValue: any): string {
@@ -95,12 +111,12 @@ export async function processExcel(buffer: ArrayBuffer) {
 
     if (cellValue instanceof Date) {
       return cellValue.toISOString().split("T")[0];
-    }
+    };
 
     if (typeof cellValue === "number") {
       const date = excelDateToJSDate(cellValue);
       return date.toISOString().split("T")[0];
-    }
+    };
 
     const str = String(cellValue).trim();
     if (str.includes('/')) {
@@ -111,13 +127,14 @@ export async function processExcel(buffer: ArrayBuffer) {
           const currentYear = new Date().getFullYear();
           const currentCentury = Math.floor(currentYear / 100) * 100;
           year = String(currentCentury + parseInt(year));
-        }
+        };
+
         return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      }
-    }
+      };
+    };
 
     return str.split(" ")[0];
-  }
+  };
 
   // Función para extraer hora de un valor de celda
   function extractTime(cellValue: any): string {
@@ -134,14 +151,14 @@ export async function processExcel(buffer: ArrayBuffer) {
       if (correctedMinutes >= 60) {
         correctedMinutes -= 60;
         correctedHours += 1;
-      }
+      };
 
       if (correctedHours >= 24) {
         correctedHours -= 24;
-      }
+      };
 
       return `${correctedHours.toString().padStart(2, '0')}:${correctedMinutes.toString().padStart(2, '0')}`;
-    }
+    };
 
     if (typeof cellValue === "number") {
       if (cellValue < 1) {
@@ -155,214 +172,18 @@ export async function processExcel(buffer: ArrayBuffer) {
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      }
-    }
+      };
+    };
 
     const str = String(cellValue).trim();
     const parts = str.split(' ');
+
     if (parts.length > 1) {
       return parts[1];
-    }
+    };
 
     return str;
-  }
-
-  // Función para convertir tiempo a minutos para comparación
-  function timeToMinutes(time: string): number {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-  }
-
-  // Función para detectar posibles turnos nocturnos basado en patrones de horarios
-  function detectNightShiftPattern(registros: { fecha: string, hora: string, tipo: string }[]): {
-    isLikelyNightShift: boolean,
-    suspiciousRecords: { fecha: string, hora: string, tipo: string, reason: string }[]
-  } {
-    const suspicious: { fecha: string, hora: string, tipo: string, reason: string }[] = [];
-
-    // Agrupar por fecha para análisis
-    const recordsByDate = new Map<string, { hora: string, tipo: string }[]>();
-    registros.forEach(registro => {
-      if (!recordsByDate.has(registro.fecha)) {
-        recordsByDate.set(registro.fecha, []);
-      }
-      recordsByDate.get(registro.fecha)!.push({ hora: registro.hora, tipo: registro.tipo });
-    });
-
-    let nightShiftIndicators = 0;
-
-    for (const [fecha, dayRecords] of recordsByDate.entries()) {
-      for (const record of dayRecords) {
-        const minutes = timeToMinutes(record.hora);
-
-        // Detectar patrones sospechosos de turno nocturno
-        if (minutes >= 0 && minutes < 360 && record.tipo === 'SALIDA') { // 00:00-06:00 SALIDA
-          suspicious.push({
-            fecha,
-            hora: record.hora,
-            tipo: record.tipo,
-            reason: 'SALIDA en madrugada - posible fin de turno nocturno'
-          });
-          nightShiftIndicators++;
-        }
-
-        if (minutes >= 1320 && record.tipo === 'ENTRADA') { // 22:00-23:59 ENTRADA
-          suspicious.push({
-            fecha,
-            hora: record.hora,
-            tipo: record.tipo,
-            reason: 'ENTRADA nocturna - posible inicio de turno nocturno'
-          });
-          nightShiftIndicators++;
-        }
-      }
-    }
-
-    return {
-      isLikelyNightShift: nightShiftIndicators > 0,
-      suspiciousRecords: suspicious
-    };
-  }
-
-  // Función mejorada para limpiar registros duplicados y erróneos
-  function cleanRegistros(registros: { fecha: string, hora: string, tipo: string }[]) {
-    if (registros.length === 0) return [];
-
-    // Ordenar por fecha y hora (sin modificar fechas para turnos nocturnos)
-    registros.sort((a, b) => {
-      const dateCompare = a.fecha.localeCompare(b.fecha);
-      if (dateCompare !== 0) return dateCompare;
-      return timeToMinutes(a.hora) - timeToMinutes(b.hora);
-    });
-
-    const cleaned: { fecha: string, hora: string, tipo: string }[] = [];
-    const TOLERANCE_MINUTES = 5;
-
-    for (let i = 0; i < registros.length; i++) {
-      const current = registros[i];
-
-      // Buscar si hay un registro muy cercano en tiempo
-      const nextIndex = i + 1;
-      if (nextIndex < registros.length) {
-        const next = registros[nextIndex];
-
-        // Si son del mismo día
-        if (current.fecha === next.fecha) {
-          const currentMinutes = timeToMinutes(current.hora);
-          const nextMinutes = timeToMinutes(next.hora);
-          const diffMinutes = Math.abs(nextMinutes - currentMinutes);
-
-          // Si están a menos de la tolerancia de distancia
-          if (diffMinutes <= TOLERANCE_MINUTES) {
-            // Caso 1: Misma hora exacta - tomar la primera
-            if (diffMinutes === 0) {
-              cleaned.push(current);
-              i++; // Saltar la siguiente
-              continue;
-            }
-
-            // Caso 2: Si uno es ENTRADA y otro SALIDA, evaluar contexto
-            if (current.tipo !== next.tipo) {
-              const lastEntry = cleaned[cleaned.length - 1];
-
-              if (lastEntry && lastEntry.fecha === current.fecha) {
-                // Si ya hay una entrada, la siguiente debería ser salida
-                if (lastEntry.tipo === 'ENTRADA') {
-                  const salidaRecord = current.tipo === 'SALIDA' ? current : next;
-                  cleaned.push(salidaRecord);
-                } else {
-                  // Si ya hay una salida, la siguiente debería ser entrada
-                  const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
-                  cleaned.push(entradaRecord);
-                }
-              } else {
-                // Si no hay contexto previo, tomar ENTRADA
-                const entradaRecord = current.tipo === 'ENTRADA' ? current : next;
-                cleaned.push(entradaRecord);
-              }
-              i++; // Saltar la siguiente
-              continue;
-            }
-
-            // Caso 3: Mismo tipo - tomar la primera
-            cleaned.push(current);
-            i++; // Saltar la siguiente
-            continue;
-          }
-        }
-      }
-
-      // Si llegamos aquí, no hay conflicto
-      cleaned.push(current);
-    }
-
-    return cleaned;
-  }
-
-
-
-  // Función para validar si los registros están completos (pares entrada-salida)
-  function validateCompleteRecords(registros: { fecha: string, hora: string, tipo: string }[]): {
-    isComplete: boolean,
-    issues: { fecha: string, issue: string }[]
-  } {
-    const recordsByDate = new Map<string, { hora: string, tipo: string }[]>();
-    const issues: { fecha: string, issue: string }[] = [];
-
-    registros.forEach(registro => {
-      if (!recordsByDate.has(registro.fecha)) {
-        recordsByDate.set(registro.fecha, []);
-      }
-      recordsByDate.get(registro.fecha)!.push({ hora: registro.hora, tipo: registro.tipo });
-    });
-
-    let isComplete = true;
-
-    for (const [fecha, dayRecords] of recordsByDate.entries()) {
-      dayRecords.sort((a, b) => timeToMinutes(a.hora) - timeToMinutes(b.hora));
-
-      // Verificar si hay un número par de registros
-      if (dayRecords.length % 2 !== 0) {
-        isComplete = false;
-        issues.push({ fecha, issue: `Número impar de registros (${dayRecords.length})` });
-        continue;
-      }
-
-      // Verificar patrón ENTRADA-SALIDA
-      for (let i = 0; i < dayRecords.length; i += 2) {
-        const entrada = dayRecords[i];
-        const salida = dayRecords[i + 1];
-
-        if (!entrada || !salida) {
-          isComplete = false;
-          issues.push({ fecha, issue: 'Registro faltante en par entrada-salida' });
-          continue;
-        }
-
-        if (entrada.tipo !== 'ENTRADA' || salida.tipo !== 'SALIDA') {
-          isComplete = false;
-          issues.push({
-            fecha,
-            issue: `Patrón incorrecto: ${entrada.tipo}-${salida.tipo} en lugar de ENTRADA-SALIDA`
-          });
-        }
-
-        // Verificar que la salida sea después de la entrada
-        const entradaMinutes = timeToMinutes(entrada.hora);
-        const salidaMinutes = timeToMinutes(salida.hora);
-
-        if (salidaMinutes <= entradaMinutes) {
-          isComplete = false;
-          issues.push({
-            fecha,
-            issue: `Salida (${salida.hora}) no puede ser antes o igual que entrada (${entrada.hora})`
-          });
-        }
-      }
-    }
-
-    return { isComplete, issues };
-  }
+  };
 
   // Procesar Excel
   const workbook = new ExcelJS.Workbook();
@@ -371,15 +192,12 @@ export async function processExcel(buffer: ArrayBuffer) {
 
   if (!worksheet) {
     throw new Error("No se encontró hoja en el archivo");
-  }
+  };
 
   // Parsear filas a partir de la 7 (ignorando encabezados)
   const empleadosMap = new Map<string, {
     nombre: string,
-    registros: { fecha: string, hora: string, tipo: string }[],
-    registrosOriginales: number,
-    registrosLimpios: number,
-    issues: { fecha: string, issue: string }[]
+    registros: { fecha: string, hora: string, fechaHora: Date }[]
   }>();
 
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
@@ -387,63 +205,161 @@ export async function processExcel(buffer: ArrayBuffer) {
 
     const fechaRaw = row.getCell(2).value; // Columna B
     const horaRaw = row.getCell(3).value;  // Columna C
-    const tipo = row.getCell(5).text?.toUpperCase(); // Columna E
     const idEmpleado = row.getCell(7).text?.trim();  // Columna G
     const nombreEmpleado = row.getCell(8).text?.trim(); // Columna H
 
-    if (!idEmpleado || !nombreEmpleado || !tipo || !fechaRaw || !horaRaw) return;
+    if (!idEmpleado || !nombreEmpleado || !fechaRaw || !horaRaw) return;
 
     const fecha = extractDate(fechaRaw);
     const hora = extractTime(horaRaw);
 
+    if (!fecha || !hora) return;
+
+    // Crear objeto Date para ordenar correctamente
+    const fechaHora = new Date(`${fecha}T${hora}:00`);
+
     if (!empleadosMap.has(idEmpleado)) {
       empleadosMap.set(idEmpleado, {
         nombre: nombreEmpleado,
-        registros: [],
-        registrosOriginales: 0,
-        registrosLimpios: 0,
-        issues: []
+        registros: []
       });
-    }
+    };
 
-    empleadosMap.get(idEmpleado)!.registros.push({ fecha, hora, tipo });
+    empleadosMap.get(idEmpleado)!.registros.push({ fecha, hora, fechaHora });
   });
 
   // Procesar cada empleado
-  let globalIsComplete = true;
-  const empleadosProcessed = new Map();
+  const empleadosJornada = new Map();
+  let importacionCompleta = true;
 
   for (const [idEmpleado, data] of empleadosMap.entries()) {
-    const registrosOriginales = data.registros.length;
-
-    // Detectar patrones de turno nocturno
-    const nightShiftAnalysis = detectNightShiftPattern(data.registros);
-
-    // Limpiar registros duplicados
-    let registrosLimpios = cleanRegistros(data.registros);
-
-    // Validar completitud (sin inferir registros faltantes)
-    const validation = validateCompleteRecords(registrosLimpios);
-
-    if (!validation.isComplete) {
-      globalIsComplete = false;
-    }
-
-    empleadosProcessed.set(idEmpleado, {
-      nombre: data.nombre,
-      registros: registrosLimpios,
-      registrosOriginales,
-      registrosLimpios: registrosLimpios.length,
-      issues: validation.issues,
-      isComplete: validation.isComplete,
-      nightShiftWarnings: nightShiftAnalysis.suspiciousRecords,
-      requiresManualReview: !validation.isComplete || nightShiftAnalysis.isLikelyNightShift
+    // CHANGE 2: Check if this employee is a night shift worker
+    const esEmpleadoNocturno = empleadosNocturnos.has(idEmpleado);
+    
+    // Ordenar por fecha y hora
+    const registrosOrdenados = [...data.registros].sort((a, b) => {
+      return a.fechaHora.getTime() - b.fechaHora.getTime();
     });
-  }
+
+    // Filtrar registros duplicados dentro del intervalo de tolerancia
+    const registrosFiltrados = registrosOrdenados.filter((registro, index) => {
+      if (index === 0) return true;
+      const horaActual = registro.fechaHora.getTime();
+      const horaAnterior = registrosOrdenados[index - 1].fechaHora.getTime();
+      const diferenciaMinutos = (horaActual - horaAnterior) / (1000 * 60);
+      return diferenciaMinutos > TOLERANCIA_MINUTOS;
+    });
+
+    let registrosProcesados: { fecha: string, hora: string, tipo: string }[] = [];
+    let requiresManualReview = false;
+
+    // CHANGE 3: If employee is night shift, always flag for manual review
+    if (esEmpleadoNocturno) {
+      requiresManualReview = true;
+    };
+
+    if (esModalidadCorrido) {
+      // MODALIDAD CORRIDO: Solo primera y última marca
+      if (registrosFiltrados.length === 0) {
+        requiresManualReview = true;
+      } else if (registrosFiltrados.length === 1) {
+        // Solo hay entrada, falta salida
+        const marcaEntrada = registrosFiltrados[0];
+
+        registrosProcesados.push({
+          fecha: marcaEntrada.fecha,
+          hora: marcaEntrada.hora,
+          tipo: 'ENTRADA'
+        });
+
+        registrosProcesados.push({
+          fecha: marcaEntrada.fecha,
+          hora: '',
+          tipo: 'SALIDA'
+        });
+
+        requiresManualReview = true;
+      } else {
+        // Hay al menos 2 marcas: tomar primera y última
+        const marcaEntrada = registrosFiltrados[0];
+        const marcaSalida = registrosFiltrados[registrosFiltrados.length - 1];
+
+        registrosProcesados.push({
+          fecha: marcaEntrada.fecha,
+          hora: marcaEntrada.hora,
+          tipo: 'ENTRADA'
+        });
+
+        registrosProcesados.push({
+          fecha: marcaSalida.fecha,
+          hora: marcaSalida.hora,
+          tipo: 'SALIDA'
+        });
+      };
+    } else {
+      // MODALIDAD PARTIDA: Crear pares de entrada/salida
+      for (let i = 0; i < registrosFiltrados.length; i += 2) {
+        const marcaEntrada = registrosFiltrados[i];
+        const marcaSalida = registrosFiltrados[i + 1];
+
+        // Entrada
+        registrosProcesados.push({
+          fecha: marcaEntrada.fecha,
+          hora: marcaEntrada.hora,
+          tipo: 'ENTRADA'
+        });
+
+        // Salida (si existe)
+        if (marcaSalida) {
+          registrosProcesados.push({
+            fecha: marcaSalida.fecha,
+            hora: marcaSalida.hora,
+            tipo: 'SALIDA'
+          });
+        } else {
+          // Si no hay salida, agregar vacío
+          registrosProcesados.push({
+            fecha: marcaEntrada.fecha,
+            hora: '',
+            tipo: 'SALIDA'
+          });
+        };
+      };
+
+      // Requiere revisión si hay número impar de marcas
+      requiresManualReview = registrosFiltrados.length % 2 !== 0;
+    };
+
+    // CHANGE 4: Only validate 8-hour minimum for NON-night shift employees
+    if (!requiresManualReview && !esEmpleadoNocturno && registrosProcesados.length >= 2) {
+      const entrada = registrosProcesados.find(r => r.tipo === 'ENTRADA');
+      const salida = registrosProcesados.find(r => r.tipo === 'SALIDA');
+
+      if (entrada && salida && salida.hora !== '') {
+        const fechaHoraEntrada = new Date(`${entrada.fecha}T${entrada.hora}:00`);
+        const fechaHoraSalida = new Date(`${salida.fecha}T${salida.hora}:00`);
+        const diferenciaHoras = (fechaHoraSalida.getTime() - fechaHoraEntrada.getTime()) / (1000 * 60 * 60);
+
+        if (diferenciaHoras < 8) {
+          requiresManualReview = true;
+        };
+      };
+    };
+
+    if (requiresManualReview) {
+      importacionCompleta = false;
+    };
+
+    empleadosJornada.set(idEmpleado, {
+      nombre: data.nombre,
+      registros: registrosProcesados,
+      requiresManualReview
+    });
+  };
 
   return {
-    empleadosJornada: empleadosProcessed,
-    importacionCompleta: globalIsComplete
+    empleadosJornada,
+    importacionCompleta
   };
 };
 
@@ -452,7 +368,7 @@ export async function createJornadas(parametros: jornadasParametros) {
 
     await client.query('BEGIN');
 
-    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo, id_tipoimportacion } = parametros;
+    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo, id_tipoimportacion, id_usuariocreacion } = parametros;
     let contador = 0;
     let fechaMemoria: Date = new Date(0);
     let quincenaMemoria: number = 0;
@@ -470,7 +386,8 @@ export async function createJornadas(parametros: jornadasParametros) {
         id_estadoimportacion: importacion_revision,
         id_proyecto: id_proyecto,
         nombreArchivo: nombreArchivo,
-        id_tipoimportacion: id_tipoimportacion
+        id_tipoimportacion: id_tipoimportacion,
+        id_usuariocreacion: id_usuariocreacion,
       };
 
       id_importacion = await insertImportacion(insertImportacionParametros);
@@ -480,7 +397,8 @@ export async function createJornadas(parametros: jornadasParametros) {
         id_estadoimportacion: importacion_incompleta,
         id_proyecto: id_proyecto,
         nombreArchivo: nombreArchivo,
-        id_tipoimportacion: id_tipoimportacion
+        id_tipoimportacion: id_tipoimportacion,
+        id_usuariocreacion: id_usuariocreacion,
       };
 
 
@@ -488,7 +406,10 @@ export async function createJornadas(parametros: jornadasParametros) {
     };
 
     const jornada_sinvalidar = await getEstadoJornadaSinValidar();
+    const jornada_valida = await getEstadoJornadaValida();
     const jornada_revision = await getEstadoJornadaRevision();
+
+    const id_fuentemarca = await getFuenteMarcaControl();
 
     const completa = empleadosJornadas.importacionCompleta;
 
@@ -567,8 +488,10 @@ export async function createJornadas(parametros: jornadasParametros) {
               id_quincena: id_quincena,
               id_tipojornada: id_tipojornada,
               id_ausencia: null,
-              id_estadojornada: requiresManualReview ? jornada_revision : jornada_sinvalidar,
+              id_estadojornada: requiresManualReview ? jornada_revision : jornada_valida,
               id_importacion: id_importacion,
+              id_fuentemarca: id_fuentemarca,
+              id_usuariocreacion: id_usuariocreacion,
             };
 
             await insertJornada(insertJornadaParametros);
@@ -639,8 +562,20 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
     // Crear la hoja de cálculo
     const worksheet = workbook.addWorksheet('Resumen de Jornadas');
 
-    // Definir las columnas
-    worksheet.columns = [
+    // Recolectar todos los tipos de ausencias únicos
+    const tiposAusencias = new Map<number, string>();
+    resumenJornadas.forEach(resumen => {
+      if (resumen.ausencias && Array.isArray(resumen.ausencias)) {
+        resumen.ausencias.forEach((ausencia: any) => {
+          if (ausencia.id && ausencia.nombre) {
+            tiposAusencias.set(ausencia.id, ausencia.nombre);
+          }
+        });
+      }
+    });
+
+    // Definir las columnas base
+    const columnasBase: any[] = [
       { header: 'Legajo', key: 'legajo', width: 15 },
       { header: 'Empleado', key: 'empleado', width: 50 },
       { header: 'Total Horas', key: 'suma_total', width: 20 },
@@ -648,12 +583,21 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       { header: 'Horas 50%', key: 'suma_total_50', width: 20 },
       { header: 'Horas 100%', key: 'suma_total_100', width: 20 },
       { header: 'Horas Feriado', key: 'suma_total_feriado', width: 20 },
-      { header: 'Horas Nocturnas', key: 'suma_total_nocturno', width: 20},
+      { header: 'Horas Nocturnas', key: 'suma_total_nocturno', width: 20 },
     ];
+
+    // Agregar columnas de ausencias dinámicamente
+    const columnasAusencias: any[] = Array.from(tiposAusencias.entries()).map(([id, nombre]) => ({
+      header: `Ausencia: ${nombre}`,
+      key: `ausencia_${id}`,
+      width: 20
+    }));
+
+    worksheet.columns = [...columnasBase, ...columnasAusencias];
 
     // Agregar los datos
     resumenJornadas.forEach(resumen => {
-      worksheet.addRow({
+      const fila: any = {
         legajo: resumen.legajo,
         empleado: resumen.empleado,
         suma_total: parseFloat(resumen.suma_total.toString()),
@@ -662,7 +606,15 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         suma_total_100: parseFloat(resumen.suma_total_100.toString()),
         suma_total_feriado: parseFloat(resumen.suma_total_feriado.toString()),
         suma_total_nocturno: parseFloat(resumen.suma_total_nocturno.toString()),
+      };
+
+      // Agregar las ausencias
+      tiposAusencias.forEach((nombre, id) => {
+        const ausencia = resumen.ausencias?.find((a: any) => a.id === id);
+        fila[`ausencia_${id}`] = ausencia ? ausencia.cantidad : 0;
       });
+
+      worksheet.addRow(fila);
     });
 
     // Estilizar el header
@@ -692,6 +644,8 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       };
     });
 
+    const numColumnasBase = columnasBase.length;
+
     // Aplicar estilos a las filas de datos
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber > 1) {
@@ -703,7 +657,7 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: 'F8F9FA' } // Gris muy claro
+              fgColor: { argb: 'F8F9FA' }
             };
           });
         };
@@ -722,36 +676,55 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else if (colNumber === 2) { // Empleado
             cell.alignment = { horizontal: 'left', vertical: 'middle' };
-          } else { // Columnas numéricas
+          } else { // Columnas numéricas (horas y ausencias)
             cell.alignment = { horizontal: 'right', vertical: 'middle' };
-            cell.numFmt = '0.00'; // Formato numérico con 2 decimales
+            // Solo formato decimal para columnas de horas
+            if (colNumber <= numColumnasBase) {
+              cell.numFmt = '0.00';
+            } else {
+              cell.numFmt = '0'; // Ausencias sin decimales
+            }
           };
         });
       };
     });
 
     // Calcular totales
-    const totales = resumenJornadas.reduce((acc, resumen) => ({
-      suma_total: acc.suma_total + parseFloat(resumen.suma_total.toString()),
-      suma_total_normal: acc.suma_total_normal + parseFloat(resumen.suma_total_normal.toString()),
-      suma_total_50: acc.suma_total_50 + parseFloat(resumen.suma_total_50.toString()),
-      suma_total_100: acc.suma_total_100 + parseFloat(resumen.suma_total_100.toString()),
-      suma_total_feriado: acc.suma_total_feriado + parseFloat(resumen.suma_total_feriado.toString()),
-      suma_total_nocturno: acc.suma_total_nocturno + parseFloat(resumen.suma_total_nocturno.toString()),
-    }), {
+    const totales: any = {
       suma_total: 0,
       suma_total_normal: 0,
       suma_total_50: 0,
       suma_total_100: 0,
       suma_total_feriado: 0,
       suma_total_nocturno: 0,
+    };
+
+    // Inicializar totales de ausencias
+    tiposAusencias.forEach((nombre, id) => {
+      totales[`ausencia_${id}`] = 0;
+    });
+
+    // Calcular totales
+    resumenJornadas.forEach(resumen => {
+      totales.suma_total += parseFloat(resumen.suma_total.toString());
+      totales.suma_total_normal += parseFloat(resumen.suma_total_normal.toString());
+      totales.suma_total_50 += parseFloat(resumen.suma_total_50.toString());
+      totales.suma_total_100 += parseFloat(resumen.suma_total_100.toString());
+      totales.suma_total_feriado += parseFloat(resumen.suma_total_feriado.toString());
+      totales.suma_total_nocturno += parseFloat(resumen.suma_total_nocturno.toString());
+
+      // Sumar ausencias
+      tiposAusencias.forEach((nombre, id) => {
+        const ausencia = resumen.ausencias?.find((a: any) => a.id === id);
+        totales[`ausencia_${id}`] += ausencia ? ausencia.cantidad : 0;
+      });
     });
 
     // Agregar fila vacía antes de los totales
     worksheet.addRow({});
 
     // Agregar fila de totales
-    const totalRow = worksheet.addRow({
+    const filaTotal: any = {
       legajo: '',
       empleado: 'TOTALES:',
       suma_total: totales.suma_total,
@@ -760,7 +733,14 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       suma_total_100: totales.suma_total_100,
       suma_total_feriado: totales.suma_total_feriado,
       suma_total_nocturno: totales.suma_total_nocturno,
+    };
+
+    // Agregar totales de ausencias
+    tiposAusencias.forEach((nombre, id) => {
+      filaTotal[`ausencia_${id}`] = totales[`ausencia_${id}`];
     });
+
+    const totalRow = worksheet.addRow(filaTotal);
 
     // Estilizar la fila de totales
     totalRow.height = 25;
@@ -778,23 +758,29 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'E6F3FF' } // Azul claro
+          fgColor: { argb: 'E6F3FF' }
         };
       } else if (colNumber > 2) { // Columnas numéricas
         cell.alignment = { horizontal: 'right', vertical: 'middle' };
-        cell.numFmt = '0.00';
+        if (colNumber <= numColumnasBase) {
+          cell.numFmt = '0.00';
+        } else {
+          cell.numFmt = '0';
+        }
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFFACD' } // Amarillo claro
+          fgColor: { argb: 'FFFACD' }
         };
       };
     });
 
-    // Aplicar filtros automáticos (solo a los datos, no a los totales)
+    // Aplicar filtros automáticos
+    const totalColumnas = columnasBase.length + columnasAusencias.length;
+    const letraColumna = String.fromCharCode(64 + totalColumnas); // Convertir número a letra (A, B, C...)
     worksheet.autoFilter = {
       from: 'A1',
-      to: `I${resumenJornadas.length + 1}`
+      to: `${letraColumna}${resumenJornadas.length + 1}`
     };
 
     // Congelar la primera fila
@@ -824,4 +810,4 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
     console.error('Error generando Excel:', error);
     throw new Error('Error al generar el archivo Excel');
   };
-};//
+};

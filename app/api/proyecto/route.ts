@@ -1,5 +1,5 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { insertUsuario } from "@/services/usuario/service.usuario";
+import { createProyecto } from "@/services/proyecto/service.proyecto";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     try {
         const parametros = await request.json();
 
-        await insertUsuario(parametros);
+        await createProyecto(parametros);
 
         return NextResponse.json({ message: "Usuario creado." }, { status: 201 });
     } catch (error) {
