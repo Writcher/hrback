@@ -16,3 +16,8 @@ export type createProyectoParametros = {
     id_modalidadtrabajo: number,
     nombre: string,
 };
+
+export type getProyectosABMParametros = {
+    pagina: number,
+    filasPorPagina: number,
+};

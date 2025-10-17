@@ -1,5 +1,5 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { getProyectos, getProyectosABM } from "@/services/proyecto/service.proyecto";
+import { getControles } from "@/services/control/service.control";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -11,24 +11,17 @@ export async function GET(request: NextRequest) {
 
         const pagina = Number(url.searchParams.get("pagina"));
         const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
-        const accion = url.searchParams.get("accion");
 
-        if (accion === "abm") {
-            const getProyectosABMParametros = {
-                pagina,
-                filasPorPagina
-            };
-
-            const respuesta = await getProyectosABM(getProyectosABMParametros);
-
-            return NextResponse.json(respuesta, { status: 200 });
+        const getControlesParametros = {
+            pagina,
+            filasPorPagina
         };
 
-        const respuesta = await getProyectos();
+        const respuesta = await getControles(getControlesParametros);
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando proyectos:", error);
+        console.error("Error buscando controles:", error);
         return NextResponse.json({ error: "Error interno" }, { status: 500 });
     };
 };

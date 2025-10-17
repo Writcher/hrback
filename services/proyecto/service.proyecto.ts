@@ -1,6 +1,6 @@
 "use server";
 
-import { createProyectoParametros, deactivateProyectoParametros, editProyectoParametros, getProyectoModalidadTrabajoParametros } from "@/lib/types/proyecto";
+import { createProyectoParametros, deactivateProyectoParametros, editProyectoParametros, getProyectoModalidadTrabajoParametros, getProyectosABMParametros } from "@/lib/types/proyecto";
 import { db } from "@vercel/postgres";
 import { getEstadoParametroActivo, getEstadoParametroBaja } from "../estadoparametro/service.estadoparametro";
 
@@ -29,8 +29,10 @@ export async function getProyectos() {
     };
 };
 
-export async function getProyectosABM() {
+export async function getProyectosABM(parametros: getProyectosABMParametros) {
     try {
+        const offset = (parametros.pagina) * parametros.filasPorPagina;
+
         const texto = `
             SELECT 
                 p.id, 
@@ -41,11 +43,24 @@ export async function getProyectosABM() {
             FROM proyecto p
             JOIN modalidadtrabajo mt ON p.id_modalidadtrabajo = mt.id
             JOIN estadoparametro ep ON p.id_estadoparametro = ep.id
+            LIMIT $1 OFFSET $2
         `;
 
-        const resultado = await client.query(texto);
+        const valores = [parametros.filasPorPagina, offset];
 
-        return resultado.rows;
+        const resultado = await client.query(texto, valores);
+
+        let textoConteo = `
+            SELECT COUNT(DISTINCT id) AS total
+            FROM "proyecto"
+        `;
+
+        const resultadoConteo = await client.query(textoConteo);
+
+        return {
+            proyectos: resultado.rows,
+            totalProyectos: resultadoConteo.rows[0].total,
+        };
     } catch (error) {
         console.error("Error en getProyectos: ", error);
         throw error;

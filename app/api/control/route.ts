@@ -1,5 +1,5 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { createProyecto } from "@/services/proyecto/service.proyecto";
+import { createControl } from "@/services/control/service.control";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -9,11 +9,11 @@ export async function POST(request: NextRequest) {
     try {
         const parametros = await request.json();
 
-        await createProyecto(parametros);
+        await createControl(parametros);
 
-        return NextResponse.json({ message: "Proyecto creado." }, { status: 201 });
+        return NextResponse.json({ message: "Control creado." }, { status: 201 });
     } catch (error) {
-        console.error("Error creando Proyecto:", error);
-        return NextResponse.json({ error: "Error creando Proyecto" }, { status: 500 });
+        console.error("Error creando Control:", error);
+        return NextResponse.json({ error: "Error creando Control" }, { status: 500 });
     };
 };
