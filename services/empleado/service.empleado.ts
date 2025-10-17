@@ -170,7 +170,7 @@ export async function insertEmpleado(parametros: insertEmpleadoParametros) {
             RETURNING id
         `;
 
-        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo.id, id_tipoempleado];
+        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo, id_tipoempleado];
 
         const resultado = await client.query(texto, valores);
 
