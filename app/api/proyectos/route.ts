@@ -1,7 +1,5 @@
-"use server";
-
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { getProyectos } from "@/services/proyecto/service.proyecto";
+import { getProyectos, getProyectosABM } from "@/services/proyecto/service.proyecto";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -9,6 +7,23 @@ export async function GET(request: NextRequest) {
     if (error) return error;
 
     try {
+        const url = new URL(request.url);
+
+        const pagina = Number(url.searchParams.get("pagina"));
+        const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
+        const accion = url.searchParams.get("accion");
+
+        if (accion === "abm") {
+            const getProyectosABMParametros = {
+                pagina,
+                filasPorPagina
+            };
+
+            const respuesta = await getProyectosABM(getProyectosABMParametros);
+
+            return NextResponse.json(respuesta, { status: 200 });
+        };
+
         const respuesta = await getProyectos();
 
         return NextResponse.json(respuesta, { status: 200 });

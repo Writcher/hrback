@@ -1,5 +1,3 @@
-"use server"
-
 import { getTipoUsuarioPorId } from "@/services/tipousuario/service.tipousuario";
 import { NextRequest, NextResponse } from "next/server";
 

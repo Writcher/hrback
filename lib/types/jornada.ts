@@ -4,10 +4,12 @@ export type updateJornadaParametros = {
     id_jornada: number;
     entrada: string;
     salida: string;
+    id_usuariomodificacion: number;
 };
 
 export type validateJornadaParametros = {
     id_jornada: number;
+    id_usuariomodificacion: number;
 };
 
 export type createJornadaParametros = {
@@ -21,6 +23,7 @@ export type createJornadaParametros = {
     duracionAusencia: number | '',
     observacion: string,
     id_empleado: number,
+    id_usuariocreacion: number,
 };
 
 export type resumenJornadasExcel = {
@@ -32,6 +35,11 @@ export type resumenJornadasExcel = {
     suma_total_100: number,
     suma_total_feriado: number,
     suma_total_nocturno: number,
+    ausencias: Array<{
+        id: number,
+        nombre: string,
+        cantidad: number
+    }>
 };
 
 export type deleteJornadaParametros = {
@@ -50,6 +58,8 @@ export type insertJornadaParametros = {
     id_ausencia: number | null,
     id_estadojornada: number,
     id_importacion: number | null,
+    id_fuentemarca: number,
+    id_usuariocreacion: number,
 };
 
 export type getJornadaAusenciaParametros = {

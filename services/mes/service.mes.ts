@@ -13,6 +13,7 @@ export async function getMeses(){
             mes, 
             id_año
             FROM mes
+            ORDER BY mes, id_año
         `;
 
         const resultado = await client.query(texto);

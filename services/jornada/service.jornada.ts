@@ -12,6 +12,7 @@ import { insertJornadaObservacion } from "../jornadaobservacion/service.jornadao
 import { insertAusencia } from "../ausencia/service.ausencia";
 import { getTipoAusenciaInjustificada } from "../tipoausencia/service.tipoausencia";
 import { getTipoJornadaAusencia } from "../tipojornada/service.tipojornada";
+import { getFuenteMarcaManual } from "../fuentemarca/service.fuentemarca";
 
 const client = db;
 
@@ -175,42 +176,80 @@ export async function getEmpleadoJornadasResumen(parametros: getEmpleadoJornadas
 export async function getJornadasResumen(parametros: getJornadasResumenParametros) {
     try {
         const valoresBase: any = [];
-
         let textoJoin = 'JOIN "empleado" e ON j.id_empleado = e.id ';
-
+        let textoJoin2 = '';
         let textoFiltroBase = 'WHERE 1=1 ';
-
+        
         if (parametros.mes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(parametros.mes);
         };
-
+        
         if (parametros.quincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
+            textoJoin2 = `JOIN "quincena" q2 ON j2.id_quincena = q2.id `;
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
             valoresBase.push(parametros.quincena);
         };
-
+        
         let textoSumatorias = `
+            WITH jornadas_sumadas AS (
+                SELECT
+                    j.id_empleado,
+                    e.legajo,
+                    e.nombreapellido as empleado,
+                    SUM(CAST(j.total AS DECIMAL)) as suma_total,
+                    SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
+                    SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
+                    SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
+                    SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado,
+                    SUM(CAST(j.total_nocturno AS DECIMAL)) as suma_total_nocturno
+                FROM "jornada" j
+                ${textoJoin}
+                ${textoFiltroBase}
+                GROUP BY j.id_empleado, e.legajo, e.nombreapellido
+            ),
+            ausencias_conteo AS (
+                SELECT
+                    j2.id_empleado,
+                    ta.id as id_tipoausencia,
+                    ta.nombre as nombre_tipoausencia,
+                    COUNT(*) as cantidad
+                FROM "jornada" j2
+                ${textoJoin2}
+                LEFT JOIN "ausencia" a ON j2.id_ausencia = a.id
+                LEFT JOIN "tipoausencia" ta ON a.id_tipoausencia = ta.id
+                ${textoFiltroBase.replace(/\bj\./g, 'j2.').replace(/\bq\./g, 'q2.')}
+                AND j2.id_ausencia IS NOT NULL
+                GROUP BY j2.id_empleado, ta.id, ta.nombre
+            )
             SELECT
-                e.legajo,
-                e.nombreapellido as empleado,
-                SUM(CAST(j.total AS DECIMAL)) as suma_total,
-                SUM(CAST(j.total_normal AS DECIMAL)) as suma_total_normal,
-                SUM(CAST(j.total_50 AS DECIMAL)) as suma_total_50,
-                SUM(CAST(j.total_100 AS DECIMAL)) as suma_total_100,
-                SUM(CAST(j.total_feriado AS DECIMAL)) as suma_total_feriado,
-                SUM(CAST(j.total_nocturno AS DECIMAL)) as suma_total_nocturno,
-            FROM "jornada" j
-            ${textoJoin}
-            ${textoFiltroBase}
-            GROUP BY j.id_empleado, e.legajo, e.nombreapellido
-            ORDER BY e.nombreapellido
+                js.legajo,
+                js.empleado,
+                js.suma_total,
+                js.suma_total_normal,
+                js.suma_total_50,
+                js.suma_total_100,
+                js.suma_total_feriado,
+                js.suma_total_nocturno,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'id', ac.id_tipoausencia,
+                            'nombre', ac.nombre_tipoausencia,
+                            'cantidad', ac.cantidad
+                        )
+                    ) FILTER (WHERE ac.id_tipoausencia IS NOT NULL),
+                    '[]'::json
+                ) as ausencias
+            FROM jornadas_sumadas js
+            LEFT JOIN ausencias_conteo ac ON js.id_empleado = ac.id_empleado
+            GROUP BY js.id_empleado, js.legajo, js.empleado, js.suma_total, js.suma_total_normal, 
+                     js.suma_total_50, js.suma_total_100, js.suma_total_feriado, js.suma_total_nocturno
+            ORDER BY js.empleado
         `;
-
         const resultado = await client.query(textoSumatorias, valoresBase);
-
         return resultado.rows
     } catch (error) {
         console.error("Error en getEmpleadoJornadas: ", error);
@@ -286,16 +325,21 @@ export async function getJornadasByImportacion(parametros: getJornadasByImportac
 
 export async function updateJornada(parametros: updateJornadaParametros) {
     try {
+        const fuenteMarca = await getFuenteMarcaManual();
+
         const texto = `
             UPDATE jornada
             SET 
                 entrada = $1,
-                salida = $2
-            WHERE id = $3
+                salida = $2,
+                id_fuentemarca = $3,
+                id_usuariomodificacion = $4,
+                fechamodificacion = CURRENT_DATE
+            WHERE id = $5
             RETURNING id, entrada, salida
         `;
 
-        const valores = [parametros.entrada, parametros.salida, parametros.id_jornada];
+        const valores = [parametros.entrada, parametros.salida, fuenteMarca, parametros.id_usuariomodificacion, parametros.id_jornada];
 
         const respuesta = await client.query(texto, valores);
 
@@ -309,13 +353,18 @@ export async function updateJornada(parametros: updateJornadaParametros) {
 export async function validateJornada(parametros: validateJornadaParametros) {
     try {
         const jornada_valida = await getEstadoJornadaValida();
+        const fuenteMarca = await getFuenteMarcaManual();
 
         const texto = `
             UPDATE jornada
-            SET id_estadojornada = $1
-            WHERE id = $2
+            SET 
+                id_estadojornada = $1,
+                id_fuentemarca = $2,
+                id_usuariovalidacion = $3,
+                fechavalidacion = CURRENT_DATE
+            WHERE id = $4
         `;
-        const valores = [jornada_valida, parametros.id_jornada];
+        const valores = [jornada_valida, fuenteMarca, parametros.id_usuariomodificacion, parametros.id_jornada];
 
         const respuesta = await client.query(texto, valores);
 
@@ -360,6 +409,7 @@ export async function createJornada(parametros: createJornadaParametros) {
             duracionAusencia,
             observacion,
             id_empleado,
+            id_usuariocreacion,
         } = parametros;
 
         const duracionAusenciaNum = duracionAusencia === '' ? 1 : Number(duracionAusencia);
@@ -388,6 +438,8 @@ export async function createJornada(parametros: createJornadaParametros) {
 
         const jornada_valida = await getEstadoJornadaValida();
 
+        const id_fuentemarca = await getFuenteMarcaManual();
+
         if (id_tipoausencia === '') {
             const insertJornadaParametros = {
                 fecha: fechaIso,
@@ -401,6 +453,8 @@ export async function createJornada(parametros: createJornadaParametros) {
                 id_ausencia: null,
                 id_estadojornada: jornada_valida,
                 id_importacion: null,
+                id_fuentemarca: id_fuentemarca,
+                id_usuariocreacion: id_usuariocreacion,
             };
 
             id_jornada = await insertJornada(insertJornadaParametros);
@@ -444,6 +498,8 @@ export async function createJornada(parametros: createJornadaParametros) {
                     id_ausencia: Number(id_ausencia),
                     id_estadojornada: jornada_valida,
                     id_importacion: null,
+                    id_fuentemarca: id_fuentemarca,
+                    id_usuariocreacion: id_usuariocreacion,
                 };
 
                 const id_jornada_ausencia = await insertJornada(insertJornadaParametros);
@@ -471,45 +527,11 @@ export async function createJornada(parametros: createJornadaParametros) {
                 id_ausencia: null,
                 id_estadojornada: jornada_valida,
                 id_importacion: null,
+                id_fuentemarca: id_fuentemarca,
+                id_usuariocreacion: id_usuariocreacion,
             };
 
             id_jornadaTarde = await insertJornada(insertJornadaParametros);
-        };
-
-        const id_observacionManual = 1;
-
-        if (id_tipoausencia === '') {
-
-            const insertJornadaObservacionParametros = {
-                id_jornada: id_jornada,
-                id_observacion: id_observacionManual,
-            };
-
-            await insertJornadaObservacion(insertJornadaObservacionParametros);
-
-            if (entradaTarde !== '' || salidaTarde !== '') {
-
-                const insertJornadaObservacionParametros = {
-                    id_jornada: id_jornadaTarde,
-                    id_observacion: id_observacionManual,
-                };
-
-                await insertJornadaObservacion(insertJornadaObservacionParametros);
-
-            };
-
-        } else {
-
-            for (const id_jornada_ausencia of ids_jornadas_ausencia) {
-
-                const insertJornadaObservacionParametros = {
-                    id_jornada: id_jornada_ausencia,
-                    id_observacion: id_observacionManual,
-                };
-
-                await insertJornadaObservacion(insertJornadaObservacionParametros);
-
-            };
         };
 
         if (observacion !== '') {
@@ -564,12 +586,12 @@ export async function createJornada(parametros: createJornadaParametros) {
 export async function insertJornada(parametros: insertJornadaParametros) {
     try {
         const texto = ` 
-            INSERT INTO "jornada" (fecha, entrada, salida, id_empleado, id_proyecto, id_mes, id_quincena, id_tipojornada, id_ausencia, id_estadojornada, id_importacion)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO "jornada" (fecha, entrada, salida, id_empleado, id_proyecto, id_mes, id_quincena, id_tipojornada, id_ausencia, id_estadojornada, id_importacion, id_fuentemarca, id_usuariocreacion)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING id
         `;
 
-        const valores = [parametros.fecha, parametros.entrada, parametros.salida, parametros.id_empleado, parametros.id_proyecto, parametros.id_mes, parametros.id_quincena, parametros.id_tipojornada, parametros.id_ausencia, parametros.id_estadojornada, parametros.id_importacion];
+        const valores = [parametros.fecha, parametros.entrada, parametros.salida, parametros.id_empleado, parametros.id_proyecto, parametros.id_mes, parametros.id_quincena, parametros.id_tipojornada, parametros.id_ausencia, parametros.id_estadojornada, parametros.id_importacion, parametros.id_fuentemarca, parametros.id_usuariocreacion];
 
         const resultado = await client.query(texto, valores);
 

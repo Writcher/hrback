@@ -1,9 +1,10 @@
 "use server"
 
-import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros } from "@/lib/types/empleado";
+import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros, getProyectoEmpleadosNocturnosParametros, getEmpleadosPresentesParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
+import { getTurnoNocturno } from "../turno/service.turno";
 
 const client = db;
 
@@ -15,7 +16,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
         const offset = (parametros.pagina) * parametros.filasPorPagina;
         const valoresBase: any = [];
 
-        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto', 'id_estadoempleado', 'id_tipoempleado'];
+        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto', 'id_estadoempleado', 'id_tipoempleado', 'id_turno'];
 
         if (!columnasValidas.includes(parametros.ordenColumna)) {
             throw new Error('Columna Invalida');
@@ -120,10 +121,13 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
                 ee.nombre AS estadoempleado,
                 te.nombre AS tipoempleado,
                 te.id AS id_tipoempleado,
+                t.nombre AS turno,
+                t.id AS id_turno,
                 ${textoMensualizado}
             FROM "empleado" e
             JOIN "proyecto" p ON e.id_proyecto = p.id
             JOIN "estadoempleado" ee ON e.id_estadoempleado = ee.id
+            LEFT JOIN "turno" t ON e.id_turno = t.id
             LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
             ${textoJoin}
             ${textoFiltroBase}
@@ -203,10 +207,11 @@ export async function editEmpleado(parametros: editEmpleadoParametros) {
 
         const texto = `
             UPDATE "empleado"
-            SET nombreapellido = $1, legajo = $2, id_reloj = $3, id_tipoempleado = $4
-            WHERE id = $5
+            SET nombreapellido = $1, legajo = $2, id_reloj = $3, id_tipoempleado = $4, id_turno = $5, id_proyecto = $6
+            WHERE id = $7
         `;
-        const valores = [parametros.nombre, parametros.legajo, parametros.id_reloj, parametros.id_tipoempleado, parametros.id];
+
+        const valores = [parametros.nombre, parametros.legajo, parametros.id_reloj, parametros.id_tipoempleado, parametros.id_turno, parametros.id_proyecto, parametros.id];
 
         await client.query(texto, valores);
 
@@ -251,6 +256,75 @@ export async function getEmpleadoProyecto(parametros: getEmpleadoProyectoParamet
         return resultado.rows[0].id_proyecto;
     } catch (error) {
         console.error("Error en getEmpleadoProyecto: ", error);
+        throw error;
+    };
+};//
+
+export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmpleadosNocturnosParametros) {
+    try {
+        const id_turno  = await getTurnoNocturno();
+
+        const texto = `
+            SELECT id_reloj
+            FROM empleado
+            WHERE id_proyecto = $1
+            AND id_turno = $2
+        `;
+
+        const valores = [parametros.id_proyecto, id_turno];
+
+        const resultado = await client.query(texto, valores);
+
+        return resultado.rows.map(row => row.id_reloj); 
+    } catch (error) {
+        console.error("Error en getProyectoEmpleadosNocturnos: ", error);
+        throw error;
+    };
+};
+
+export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesParametros) {
+    try {
+        const valoresBase: any = [];
+
+        let textoFiltroBase = 'WHERE 1=1 ';
+
+        if (parametros.filtroProyecto !== 0) {
+            textoFiltroBase += `
+                AND e.id_proyecto = $${valoresBase.length + 1}
+            `;
+            valoresBase.push(parametros.filtroProyecto);
+        };
+
+        const valoresPrincipal = [...valoresBase];
+
+        let texto = `
+            SELECT DISTINCT
+                e.id,
+                e.nombreapellido AS nombre,
+                e.id_reloj,
+                te.nombre AS tipoempleado,
+                te.id AS id_tipoempleado
+            FROM "empleado" e
+            LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
+            ${textoFiltroBase}
+        `;
+
+        const resultado = await client.query(texto, valoresPrincipal);
+
+        let textoConteo = `
+            SELECT COUNT(*) AS total
+            FROM "empleado" e
+            ${textoFiltroBase}
+        `;
+
+        const resultadoConteo = await client.query(textoConteo, valoresBase);
+
+        return {
+            empleados: resultado.rows,
+            totalEmpleados: resultadoConteo.rows[0].total,
+        };
+    } catch (error) {
+        console.error("Error en getEmpleadosPresentes: ", error);
         throw error;
     };
 };//

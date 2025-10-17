@@ -1,5 +1,3 @@
-"use server";
-
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getMeses } from "@/services/mes/service.mes";
 import { NextRequest, NextResponse } from "next/server";

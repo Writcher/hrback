@@ -33,7 +33,7 @@ export async function getEstadoEmpleadoBaja(){
 
         const resultado = await client.query(texto);
 
-        return resultado.rows[0];
+        return resultado.rows[0].id;
     } catch (error) {
         console.error("Error en getEstadoEmpleadoBaja: ", error);
         throw error;
@@ -51,7 +51,7 @@ export async function getEstadoEmpleadoActivo() {
 
         const resultado = await client.query(texto);
 
-        return resultado.rows[0];
+        return resultado.rows[0].id;
     } catch (error) {
         console.error("Error en getEstadoEmpleadoActivo: ", error);
         throw error;

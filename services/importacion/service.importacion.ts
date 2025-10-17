@@ -41,9 +41,13 @@ export async function getImportaciones(parametros: getImportacionesParametros) {
                 i.id,
                 i.fecha,
                 i.nombrearchivo AS nombre,
-                e.nombre AS nombreestado
+                e.nombre AS nombreestado,
+                u.nombre AS nombreusuario,
+                p.nombre AS nombreproyecto
             FROM "importacion" i
             JOIN "estadoimportacion" e ON i.id_estadoimportacion = e.id
+            JOIN "usuario" u ON i.id_usuariocreacion = u.id
+            JOIN "proyecto" p ON i.id_proyecto = p.id
             ${textoFiltroBase}
             ${textoLimite}
         `;
@@ -108,12 +112,12 @@ export async function deleteImportacion(parametros: deleteImportacionParametros)
 export async function insertImportacion(parametros: insertImportacionParametros) {
     try {
         const texto = `
-            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo, id_tipoimportacion)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo, id_tipoimportacion, id_usuariocreacion)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         `;
 
-        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo, parametros.id_tipoimportacion];
+        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo, parametros.id_tipoimportacion, parametros.id_usuariocreacion];
 
         const respuesta = await client.query(texto, valores);
 

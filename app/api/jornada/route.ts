@@ -9,7 +9,9 @@ export async function POST(request: NextRequest) {
     try {
         const parametros = await request.json();
 
-        await createJornada(parametros);
+        const id_usuariocreacion = payload.id;
+
+        await createJornada({ ...parametros, id_usuariocreacion });
 
         return NextResponse.json({ message: "Jornada creada." }, { status: 201 });
     } catch (error) {

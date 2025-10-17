@@ -1,5 +1,3 @@
-"use server"
-
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getJornadasResumen } from "@/services/jornada/service.jornada";
