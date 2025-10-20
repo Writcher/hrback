@@ -23,6 +23,7 @@ export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParamet
 
         let textoJoin = `
             JOIN "tipojornada" t ON j.id_tipojornada = t.id
+            JOIN "fuentemarca" fm ON j.id_fuentemarca = fm.id
             LEFT JOIN "ausencia" a ON j.id_ausencia = a.id
             LEFT JOIN "tipoausencia" ta ON a.id_tipoausencia = ta.id
             LEFT JOIN "jornadaobservacion" jo ON j.id = jo.id_jornada
@@ -69,6 +70,7 @@ export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParamet
                 j.total,
                 t.nombre AS tipojornada,
                 ta.nombre AS tipoausencia,
+                COALESCE((fm.nombre = 'Manual'), false) AS es_manual,
                 array_agg(DISTINCT o.texto) FILTER (WHERE o.texto IS NOT NULL) AS observaciones
             FROM "jornada" j
             ${textoJoin}
@@ -82,7 +84,8 @@ export async function getEmpleadoJornadas(parametros: getEmpleadoJornadasParamet
                 j.salida_r,
                 j.total,
                 t.nombre,
-                ta.nombre
+                ta.nombre,
+                fm.nombre
             ORDER BY j.fecha ASC    
             ${textoLimite}
         `;
