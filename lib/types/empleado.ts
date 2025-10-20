@@ -12,6 +12,7 @@ export type getEmpleadosParametros = {
     filtroTipoAusencia: number,
     filtroMes: number,
     filtroQuincena: number,
+    filtroMarcaManual: boolean,
 };
 
 export type getEmpleadosPresentesParametros = {

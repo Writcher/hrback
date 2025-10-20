@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         const filtroTipoAusencia = Number(url.searchParams.get("filtroTipoAusencia"));
         const filtroMes = Number(url.searchParams.get("filtroMes"));
         const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
+        const filtroMarcaManual = url.searchParams.get("filtroMarcaManual") === "true";
         const fecha = url.searchParams.get("fecha");
         const accion = url.searchParams.get("accion");
 
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
             busquedaNombre === null ||
             ordenColumna === null ||
             ordenDireccion === null ||
+            filtroMarcaManual === null ||
             isNaN(filtroProyecto) ||
             isNaN(pagina) ||
             isNaN(filasPorPagina) ||
@@ -85,7 +87,8 @@ export async function GET(request: NextRequest) {
             filtroTipoEmpleado,
             filtroTipoAusencia,
             filtroMes,
-            filtroQuincena
+            filtroQuincena,
+            filtroMarcaManual
         };
 
         const respuesta = await getEmpleados(getEmpleadosParametros);

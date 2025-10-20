@@ -110,6 +110,16 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             COALESCE((te.id = $${valoresPrincipal.length - 2}), false) AS es_mensualizado
         `;
 
+        if (parametros.filtroMarcaManual === true) {
+            textoJoin += `
+                JOIN jornada jm ON e.id = jm.id_empleado
+                JOIN fuentemarca fmm ON jm.id_fuentemarca = fmm.id
+            `;
+            textoFiltroBase += `
+                AND fmm.nombre = 'Manual'
+            `;
+        }
+
         let texto = `
             SELECT DISTINCT
                 e.id,
@@ -131,6 +141,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
             ${textoJoin}
             ${textoFiltroBase}
+            GROUP BY e.id, p.nombre, ee.nombre, te.nombre, te.id, t.nombre, t.id
             ${textoOrden}
             ${textoLimite}
         `;
@@ -170,7 +181,7 @@ export async function insertEmpleado(parametros: insertEmpleadoParametros) {
             RETURNING id
         `;
 
-        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo.id, id_tipoempleado];
+        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo, id_tipoempleado];
 
         const resultado = await client.query(texto, valores);
 
@@ -262,7 +273,7 @@ export async function getEmpleadoProyecto(parametros: getEmpleadoProyectoParamet
 
 export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmpleadosNocturnosParametros) {
     try {
-        const id_turno  = await getTurnoNocturno();
+        const id_turno = await getTurnoNocturno();
 
         const texto = `
             SELECT id_reloj
@@ -275,7 +286,7 @@ export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmple
 
         const resultado = await client.query(texto, valores);
 
-        return resultado.rows.map(row => row.id_reloj); 
+        return resultado.rows.map(row => row.id_reloj);
     } catch (error) {
         console.error("Error en getProyectoEmpleadosNocturnos: ", error);
         throw error;
