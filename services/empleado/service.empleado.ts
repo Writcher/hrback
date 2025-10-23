@@ -308,15 +308,6 @@ export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesPar
     try {
         const valoresBase: any = [];
 
-        let textoFiltroBase = 'WHERE 1=1 ';
-
-        if (parametros.filtroProyecto !== 0) {
-            textoFiltroBase += `
-                AND e.id_proyecto = $${valoresBase.length + 1}
-            `;
-            valoresBase.push(parametros.filtroProyecto);
-        };
-
         const valoresPrincipal = [...valoresBase];
 
         let texto = `
@@ -328,7 +319,7 @@ export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesPar
                 te.id AS id_tipoempleado
             FROM "empleado" e
             LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
-            ${textoFiltroBase}
+            LEFT JOIN "jornada" j ON j.id_empleado = e.id
         `;
 
         const resultado = await client.query(texto, valoresPrincipal);
@@ -336,7 +327,6 @@ export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesPar
         let textoConteo = `
             SELECT COUNT(*) AS total
             FROM "empleado" e
-            ${textoFiltroBase}
         `;
 
         const resultadoConteo = await client.query(textoConteo, valoresBase);
