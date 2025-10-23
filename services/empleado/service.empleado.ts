@@ -204,7 +204,7 @@ export async function deactivateEmpleado(parametros: deactivateEmpleadoParametro
             WHERE id = $2
         `;
 
-        const valores = [empleadoBaja.id, parametros.id];
+        const valores = [empleadoBaja, parametros.id];
 
         await client.query(texto, valores);
 
