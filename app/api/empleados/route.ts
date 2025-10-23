@@ -1,7 +1,7 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getControlByProyecto } from "@/services/control/service.control";
 import { getEmpleados } from "@/services/empleado/service.empleado";
-import { getPresentes } from "@/services/sqlserver/service.sqlserver";
+import { getPresentes, syncNomina } from "@/services/sqlserver/service.sqlserver";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -96,6 +96,21 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
         console.error("Error buscando empleados:", error);
+        return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    };
+};
+
+export async function POST(request: NextRequest) {
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
+
+    try {
+        
+        await syncNomina();
+
+        return NextResponse.json({ status: 200 });
+    } catch (error) {
+        console.error("Error sincronizando legajos de empleados:", error);
         return NextResponse.json({ error: "Error interno" }, { status: 500 });
     };
 };

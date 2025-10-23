@@ -67,6 +67,7 @@ export type deactivateEmpleadoParametros = {
 export type getEmpleadoByRelojProyectoParametros = {
     id_reloj: number,
     id_proyecto: number,
+    id_tipoimportacion: number,
 };
 
 export type getEmpleadoProyectoParametros = {
