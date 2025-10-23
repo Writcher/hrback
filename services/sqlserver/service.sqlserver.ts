@@ -3,8 +3,11 @@
 import { getConnection } from "@/config/sqlserver";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
 import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
-import { getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
+import { getAllEmpleados, getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
 import ExcelJS from "exceljs";
+import { db } from "@vercel/postgres";
+
+const client = db;
 
 export type getMarcasSQLServerParametros = {
     fecha: string; // formato ISO: YYYY-MM-DD
@@ -77,7 +80,7 @@ export async function getMarcasSQLServer(parametros: getMarcasSQLServerParametro
         console.error("Error en getMarcasSQLServer: ", error);
         throw error;
     };
-};
+};//
 
 export async function getPresentes(parametros: getPresentesParametros) {
     try {
@@ -138,7 +141,7 @@ export async function getPresentes(parametros: getPresentesParametros) {
         console.error("Error en getPresentes: ", error);
         throw error;
     };
-};
+};//
 
 export async function procesarMarcasEmpleados({ registros, id_proyecto }: { registros: any[], id_proyecto: number }): Promise<ResultadoProcesado> {
 
@@ -314,7 +317,7 @@ export async function procesarMarcasEmpleados({ registros, id_proyecto }: { regi
         empleadosJornada,
         importacionCompleta
     };
-};
+};//
 
 export async function getPresentesExportar(parametros: getPresentesExportarParametros) {
     try {
@@ -353,7 +356,7 @@ export async function getPresentesExportar(parametros: getPresentesExportarParam
         console.error("Error en getPresentes: ", error);
         throw error;
     };
-};
+};//
 
 export async function generarExcelPresentes(presentes: Array<{ id_empleado: string | number; nombre: string }>) {
     try {
@@ -506,5 +509,54 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
     } catch (error) {
         console.error('Error generando Excel de presentes:', error);
         throw new Error('Error al generar el archivo Excel');
+    };
+};//
+
+export async function syncNomina() {
+    try {
+
+        const pool = await getConnection();
+
+        const texto = `
+            SELECT DISTINCT [Dni/Cuil], [Legajo]
+            FROM [control_de_accesos].[dbo].[nomina]
+            WHERE [ESTADO] = 'ACTIVO'
+        `;
+
+        const llamada = pool.request();
+
+        const respuestaSQL = await llamada.query(texto);
+
+        const respuestaPG = await getAllEmpleados();
+
+        const legajoMap = new Map();
+        respuestaSQL.recordset.forEach(row => {
+            const dniCuil = row['Dni/Cuil'];
+            if (dniCuil && dniCuil.length > 3) {
+                // Cut first 2 and last 1 characters
+                const processedDni = dniCuil.slice(2, -1);
+                legajoMap.set(Number(processedDni), row['Legajo']);
+            };
+        });
+
+        console.log(legajoMap)
+
+        const updatePromises = respuestaPG
+            .filter(emp => legajoMap.has(emp.id_reloj))
+            .map(emp => {
+                const legajo = legajoMap.get(emp.id_reloj);
+                const updateQuery = `
+                    UPDATE empleado 
+                    SET legajo = $1 
+                    WHERE id = $2
+                `;
+                return client.query(updateQuery, [legajo, emp.id]);
+            });
+
+        await Promise.all(updatePromises);
+
+    } catch (error) {
+        console.error("Error en syncNomina: ", error);
+        throw error;
     };
 };

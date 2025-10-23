@@ -420,6 +420,7 @@ export async function createJornadas(parametros: jornadasParametros) {
       const empleadoParametros = {
         id_reloj: Number(id_reloj),
         id_proyecto: id_proyecto,
+        id_tipoimportacion: id_tipoimportacion
       };
 
       const empleado = await getEmpleadoByRelojProyecto(empleadoParametros);

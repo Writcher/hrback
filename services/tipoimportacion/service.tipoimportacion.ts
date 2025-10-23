@@ -21,3 +21,20 @@ export async function getTiposImportacion(){
         throw error;
     };
 };
+
+export async function getTipoImportacionProSoft() {
+    try {
+        const texto = `
+            SELECT id
+            FROM tipoimportacion
+            WHERE nombre = 'ProSoft'
+        `;
+
+        const resultado = await client.query(texto);
+
+        return resultado.rows[0].id;
+    } catch (error) {
+        console.error("Error en getTipoImportacionProSoft: ", error);
+        throw error;
+    };
+};

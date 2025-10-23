@@ -5,6 +5,7 @@ import { db } from "@vercel/postgres";
 import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 import { getTurnoNocturno } from "../turno/service.turno";
+import { getTipoImportacionProSoft } from "../tipoimportacion/service.tipoimportacion";
 
 const client = db;
 
@@ -118,7 +119,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             textoFiltroBase += `
                 AND fmm.nombre = 'Manual'
             `;
-        }
+        };
 
         let texto = `
             SELECT DISTINCT
@@ -127,6 +128,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
                 e.id_reloj,
                 e.legajo,
                 e.id_proyecto,
+                e.id_estadoempleado,  -- ADD THIS LINE
                 p.nombre AS nombreproyecto,
                 ee.nombre AS estadoempleado,
                 te.nombre AS tipoempleado,
@@ -235,13 +237,22 @@ export async function editEmpleado(parametros: editEmpleadoParametros) {
 
 export async function getEmpleadoByRelojProyecto(parametros: getEmpleadoByRelojProyectoParametros) {
     try {
-        const texto = `
+        const id_prosoft = await getTipoImportacionProSoft();
+
+        let texto = `
             SELECT id
             FROM empleado
-            WHERE id_reloj = $1 AND id_proyecto = $2
+            WHERE id_reloj = $1 
         `;
 
-        const valores = [parametros.id_reloj, parametros.id_proyecto];
+        const proyecto = ' AND id_proyecto = $2';
+
+        const valores = [parametros.id_reloj];
+
+        if (parametros.id_tipoimportacion === id_prosoft) {
+            texto += proyecto;
+            valores.push(parametros.id_proyecto);
+        };
 
         const resultado = await client.query(texto, valores);
 
@@ -339,3 +350,22 @@ export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesPar
         throw error;
     };
 };//
+
+export async function getAllEmpleados() {
+    try {
+
+        const texto = `
+            SELECT DISTINCT 
+                id,
+                id_reloj
+            FROM empleado
+        `;
+
+        const respuesta = await client.query(texto);
+
+        return respuesta.rows;
+    } catch (error) {
+        console.error("Error en getAllEmpleados: ", error);
+        throw error;
+    };
+};
