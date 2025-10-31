@@ -1,11 +1,12 @@
 "use server"
 
-import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros, getProyectoEmpleadosNocturnosParametros, getEmpleadosPresentesParametros } from "@/lib/types/empleado";
+import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros, getProyectoEmpleadosNocturnosParametros, getAusentesParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 import { getTurnoNocturno } from "../turno/service.turno";
 import { getTipoImportacionProSoft } from "../tipoimportacion/service.tipoimportacion";
+import { getNominaProyecto, getPresentes, getPresentesGlobal } from "../sqlserver/service.sqlserver";
 
 const client = db;
 
@@ -297,14 +298,14 @@ export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmple
 
         const resultado = await client.query(texto, valores);
 
-        return resultado.rows.map(row => row.id_reloj);
+        return resultado.rows.map(row => String(row.id_reloj));
     } catch (error) {
         console.error("Error en getProyectoEmpleadosNocturnos: ", error);
         throw error;
     };
 };
 
-export async function getEmpleadosPresentes(parametros: getEmpleadosPresentesParametros) {
+export async function getEmpleadosPresentes() {
     try {
         const valoresBase: any = [];
 
@@ -358,4 +359,26 @@ export async function getAllEmpleados() {
         console.error("Error en getAllEmpleados: ", error);
         throw error;
     };
-};
+};//
+
+export async function getAusentes(parametros: getAusentesParametros) {
+    try {
+         
+        const nomina = await getNominaProyecto({ id_proyecto: parametros.filtroProyecto });
+
+        const normalizar = (id: string) => Number(id.slice(2, -1));
+
+        const presentes = await getPresentesGlobal(parametros);
+
+        const ids_presentes = new Set(presentes.presentes.map(r => Number(r.id_reloj)));
+        
+        const ausentes = nomina.filter(r => !ids_presentes.has(normalizar(r.id_empleado)));
+
+        const ids_ausentes = ausentes.map(r => normalizar(r.id_empleado));
+        
+        return ids_ausentes;
+    } catch (error) {
+        console.error("Error en getAusentes: ", error);
+        throw error;
+    };
+};//

@@ -46,6 +46,23 @@ export async function getTipoAusenciaInjustificada(){
     };
 };
 
+export async function getTipoAusenciaPendiente(){
+    try {
+        const texto = `
+            SELECT id
+            FROM tipoausencia
+            WHERE nombre = 'Pendiente'
+        `;
+
+        const resultado = await client.query(texto);
+
+        return resultado.rows[0].id
+    } catch (error) {
+        console.error("Error en getTipoAusenciaPendiente: ", error);
+        throw error;
+    };
+};
+
 export async function getTiposAusenciaABM(parametros: getTiposAusenciaABMParametros) {
     try {
         const offset = (parametros.pagina) * parametros.filasPorPagina;

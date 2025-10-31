@@ -2,17 +2,20 @@
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getJornadasByImportacionParametros } from "@/lib/types/importacion";
-import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros } from "@/lib/types/jornada";
+import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros, createAbsencesParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { getMesQuincena } from "../excel/service.excel";
-import { getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
-import { getEmpleadoProyecto } from "../empleado/service.empleado";
+import { getEstadoJornadaSinValidar, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
+import { getEmpleadoByRelojProyecto, getEmpleadoProyecto } from "../empleado/service.empleado";
 import { insertObservacion } from "../observacion/service.observacion";
 import { insertJornadaObservacion } from "../jornadaobservacion/service.jornadaobservacion";
 import { insertAusencia } from "../ausencia/service.ausencia";
-import { getTipoAusenciaInjustificada } from "../tipoausencia/service.tipoausencia";
+import { getTipoAusenciaInjustificada, getTipoAusenciaPendiente } from "../tipoausencia/service.tipoausencia";
 import { getTipoJornadaAusencia } from "../tipojornada/service.tipojornada";
-import { getFuenteMarcaManual } from "../fuentemarca/service.fuentemarca";
+import { getFuenteMarcaControl, getFuenteMarcaManual } from "../fuentemarca/service.fuentemarca";
+import { getTipoImportacionAusentes } from "../tipoimportacion/service.tipoimportacion";
+import { getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
+import { insertImportacion } from "../importacion/service.importacion";
 
 const client = db;
 
@@ -182,12 +185,12 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
         let textoJoin = 'JOIN "empleado" e ON j.id_empleado = e.id ';
         let textoJoin2 = '';
         let textoFiltroBase = 'WHERE 1=1 ';
-        
+
         if (parametros.mes !== 0) {
             textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
             valoresBase.push(parametros.mes);
         };
-        
+
         if (parametros.quincena !== 0) {
             const quincenaParamIndex = valoresBase.length + 1;
             textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
@@ -195,7 +198,7 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
             textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
             valoresBase.push(parametros.quincena);
         };
-        
+
         let textoSumatorias = `
             WITH jornadas_sumadas AS (
                 SELECT
@@ -262,7 +265,9 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
 
 export async function getJornadasByImportacion(parametros: getJornadasByImportacionParametros) {
     try {
-        const jornada_valida = await getEstadoJornadaValida()
+        const jornada_valida = await getEstadoJornadaValida();
+
+        const id_ausencia = await getTipoJornadaAusencia();
 
         const offset = (parametros.pagina) * parametros.filasPorPagina;
 
@@ -271,10 +276,11 @@ export async function getJornadasByImportacion(parametros: getJornadasByImportac
         let textoFiltroBase = 'WHERE j.id_importacion = $1 ';
 
         if (parametros.filtroMarcasIncompletas) {
-            textoFiltroBase += 'AND (j.entrada IS NULL OR j.salida IS NULL) '
+            textoFiltroBase += 'AND j.id_estadojornada != $2 '
+            valoresBase.push(jornada_valida);
         };
 
-        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
+        const valoresPrincipal = [...valoresBase, id_ausencia, parametros.filasPorPagina, offset];
 
         const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
 
@@ -285,12 +291,16 @@ export async function getJornadasByImportacion(parametros: getJornadasByImportac
                 j.entrada,
                 j.salida,
                 ej.nombre AS estadojornada,
-                e.nombreapellido AS nombreempleado
+                e.nombreapellido AS nombreempleado,
+                ta.id AS id_tipoausencia,
+                (j.id_tipojornada = $${valoresPrincipal.length - 2}) AS ausencia
             FROM "jornada" j
             JOIN "empleado" e ON j.id_empleado = e.id
             JOIN "estadojornada" ej ON j.id_estadojornada = ej.id
+            LEFT JOIN "ausencia" a ON j.id_ausencia = a.id
+            LEFT JOIN "tipoausencia" ta ON a.id_tipoausencia = ta.id
             ${textoFiltroBase}
-            ORDER BY e.nombreapellido ASC
+            ORDER BY ausencia ASC
             ${textoLimite}
         `;
 
@@ -622,4 +632,85 @@ export async function getJornadaAusencia(parametros: getJornadaAusenciaParametro
         console.error("Error en getJornadaAusencia: ", error);
         throw error;
     };
-};
+};//
+
+export async function createAbsences(parametros: createAbsencesParametros) {
+    try {
+
+        await client.query('BEGIN');
+
+        const {
+            fecha,
+            id_proyecto,
+            ausentes,
+            id_usuario,
+            id_importacion,
+        } = parametros;
+
+        const [dia, mes, año] = fecha.split("-").map(Number);
+        const fechaIso = `${año}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+        const quincena = dia <= 15 ? 1 : 2;
+
+        const getMesQuincenaParametros = {
+            año: año,
+            mes: mes,
+            quincena: quincena,
+        };
+
+        const { id_mes, id_quincena } = await getMesQuincena(getMesQuincenaParametros);
+
+        const id_tipoimportacion = await getTipoImportacionAusentes();
+        const id_tipojornada = await getTipoJornadaAusencia();
+        const id_tipoausencia = await getTipoAusenciaPendiente();
+        const id_fuentemarca = await getFuenteMarcaControl();
+        const id_estadojornada = await getEstadoJornadaSinValidar();
+
+        for (const id_empleado of ausentes) {
+
+            const getEmpleadoByRelojProyectoParametros = {
+                id_reloj: id_empleado,
+                id_proyecto: id_proyecto,
+                id_tipoimportacion: id_tipoimportacion,
+            };
+
+            const id_empleadoPG = await getEmpleadoByRelojProyecto(getEmpleadoByRelojProyectoParametros);
+
+            if (!id_empleadoPG.rows?.length) {
+                continue;
+            };
+
+            const insertAusenciaParametros = {
+                id_empleado: id_empleadoPG.rows[0].id,
+                id_tipoausencia: Number(id_tipoausencia),
+            };
+
+            const id_ausencia = await insertAusencia(insertAusenciaParametros);
+
+            const insertJornadaParametros = {
+                fecha: fechaIso,
+                entrada: null,
+                salida: null,
+                id_empleado: id_empleadoPG.rows[0].id,
+                id_proyecto: id_proyecto,
+                id_mes: id_mes,
+                id_quincena: id_quincena,
+                id_tipojornada: Number(id_tipojornada),
+                id_ausencia: Number(id_ausencia),
+                id_estadojornada: id_estadojornada,
+                id_importacion: id_importacion,
+                id_fuentemarca: id_fuentemarca,
+                id_usuariocreacion: id_usuario
+            };
+
+            await insertJornada(insertJornadaParametros);
+        };
+
+        await client.query('COMMIT');
+
+        return { id_importacion };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Error en createAbsences: ", error);
+        throw error;
+    };
+};//

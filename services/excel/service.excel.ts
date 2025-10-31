@@ -405,7 +405,6 @@ export async function createJornadas(parametros: jornadasParametros) {
       id_importacion = await insertImportacion(insertImportacionParametros);
     };
 
-    const jornada_sinvalidar = await getEstadoJornadaSinValidar();
     const jornada_valida = await getEstadoJornadaValida();
     const jornada_revision = await getEstadoJornadaRevision();
 

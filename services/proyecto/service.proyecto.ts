@@ -1,6 +1,6 @@
 "use server";
 
-import { createProyectoParametros, deactivateProyectoParametros, editProyectoParametros, getProyectoModalidadTrabajoParametros, getProyectosABMParametros } from "@/lib/types/proyecto";
+import { createProyectoParametros, deactivateProyectoParametros, editProyectoParametros, getProyectoModalidadTrabajoParametros, getProyectoNominaParametros, getProyectosABMParametros } from "@/lib/types/proyecto";
 import { db } from "@vercel/postgres";
 import { getEstadoParametroActivo, getEstadoParametroBaja } from "../estadoparametro/service.estadoparametro";
 
@@ -142,6 +142,26 @@ export async function createProyecto(parametros: createProyectoParametros) {
         await client.query(texto, valores);
     } catch (error) {
         console.error("Error en createProyecto: ", error);
+        throw error;
+    };
+};
+
+export async function getProyectoNomina(parametros: getProyectoNominaParametros) {
+    try {
+
+        const texto = `
+            SELECT nomina
+            FROM proyecto
+            WHERE id = $1
+        `;
+
+        const valores = [parametros.id_proyecto];
+
+        const respuesta = await client.query(texto, valores);
+
+        return respuesta.rows[0].nomina;
+    } catch (error) {
+        console.error("Error en getProyectoNomina: ", error);
         throw error;
     };
 };

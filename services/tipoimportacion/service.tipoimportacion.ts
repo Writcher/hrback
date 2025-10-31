@@ -11,6 +11,7 @@ export async function getTiposImportacion(){
             id, 
             nombre
             FROM tipoimportacion
+            WHERE nombre != 'Ausentes'
         `;
 
         const resultado = await client.query(texto);
@@ -35,6 +36,23 @@ export async function getTipoImportacionProSoft() {
         return resultado.rows[0].id;
     } catch (error) {
         console.error("Error en getTipoImportacionProSoft: ", error);
+        throw error;
+    };
+};
+
+export async function getTipoImportacionAusentes() {
+    try {
+        const texto = `
+            SELECT id
+            FROM tipoimportacion
+            WHERE nombre = 'Ausentes'
+        `;
+
+        const resultado = await client.query(texto);
+
+        return resultado.rows[0].id;
+    } catch (error) {
+        console.error("Error en getTipoImportacionAusentes: ", error);
         throw error;
     };
 };

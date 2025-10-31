@@ -3,6 +3,8 @@ import { createJornadas, processExcel } from "@/services/excel/service.excel";
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getMarcasSQLServer, procesarMarcasEmpleados } from "@/services/sqlserver/service.sqlserver";
 import { getControlByProyecto, getProyectosConHikVision } from "@/services/control/service.control";
+import { getAusentes } from "@/services/empleado/service.empleado";
+import { createAbsences } from "@/services/jornada/service.jornada";
 
 export async function POST(req: NextRequest) {
   const { error, payload } = await verifyAuthToken(req);
@@ -22,9 +24,14 @@ export async function POST(req: NextRequest) {
     const fechaConvertida = fecha.split('-').reverse().join('-');
 
     if (
+      id_tipoimportacion == null || isNaN(id_tipoimportacion)
+    ) {
+      return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+    };
+
+    if (
       !id_proyecto || isNaN(id_proyecto) ||
-      !id_tipojornada || isNaN(id_tipojornada) ||
-      !id_tipoimportacion || isNaN(id_tipoimportacion)
+      !id_tipojornada || isNaN(id_tipojornada)
     ) {
       return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
     };
@@ -100,7 +107,7 @@ export async function POST(req: NextRequest) {
      *   importacionCompleta: boolean; // false si alguna jornada requiere revisión manual
      * }
      *
-     * ⚠️ IMPORTANTE:
+     * IMPORTANTE:
      * El endpoint depende de que el importador cumpla con este contrato
      * para poder guardar correctamente las jornadas.
      */
@@ -118,8 +125,43 @@ export async function POST(req: NextRequest) {
 
     const importacion = await createJornadas(insertJornadaParametros);
 
+    if (id_tipoimportacion === 2) {
+
+      const proyectosSoportados = await getProyectosConHikVision();
+
+      if (!proyectosSoportados.includes(id_proyecto)) {
+        return NextResponse.json({ error: "Proyecto no disponible" }, { status: 400 });
+      };
+
+      if (
+        !id_proyecto || isNaN(id_proyecto) ||
+        !fecha || typeof fecha !== 'string'
+      ) {
+        return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+      };
+
+      const dispositivos = await getControlByProyecto({ id_proyecto });
+
+      const getAusentesParametros = {
+        fecha: fechaConvertida,
+        dispositivos,
+        filtroProyecto: id_proyecto
+      };
+
+      const ausentes = await getAusentes(getAusentesParametros);
+
+      const createAbsencesParametros = {
+        fecha: fecha,
+        id_proyecto: id_proyecto,
+        ausentes: ausentes,
+        id_usuario: Number(payload.id),
+        id_importacion: importacion.id_importacion,
+      };
+
+      await createAbsences(createAbsencesParametros);
+    };
+
     return NextResponse.json({
-      message: "Archivo procesado correctamente.",
       importacion: importacion.id_importacion,
       completa: importacion.completa,
     }, { status: 200 });

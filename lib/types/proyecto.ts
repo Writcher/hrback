@@ -21,3 +21,7 @@ export type getProyectosABMParametros = {
     pagina: number,
     filasPorPagina: number,
 };
+
+export type getProyectoNominaParametros = {
+    id_proyecto: number,
+};

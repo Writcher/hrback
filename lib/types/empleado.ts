@@ -15,8 +15,10 @@ export type getEmpleadosParametros = {
     filtroMarcaManual: boolean,
 };
 
-export type getEmpleadosPresentesParametros = {
+export type getAusentesParametros = {
     filtroProyecto: number,
+    dispositivos: string[],
+    fecha: string,
 };
 
 export type getEmpleadoJornadasParametros = {

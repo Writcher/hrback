@@ -65,3 +65,11 @@ export type insertJornadaParametros = {
 export type getJornadaAusenciaParametros = {
     id: number,
 };
+
+export type createAbsencesParametros = {
+    fecha: string,
+    id_proyecto: number,
+    ausentes: number[],
+    id_usuario: number,
+    id_importacion: number,
+};

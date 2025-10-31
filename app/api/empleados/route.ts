@@ -1,7 +1,7 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getControlByProyecto } from "@/services/control/service.control";
 import { getEmpleados } from "@/services/empleado/service.empleado";
-import { getPresentes, syncNomina } from "@/services/sqlserver/service.sqlserver";
+import { getNominaProyecto, getPresentes, syncNomina } from "@/services/sqlserver/service.sqlserver";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
                 filasPorPagina,
             };
 
-            const respuesta = await getPresentes(getPresentesParametros)
+            const respuesta = await getPresentes(getPresentesParametros);
 
             return NextResponse.json(respuesta, { status: 200 });
         };

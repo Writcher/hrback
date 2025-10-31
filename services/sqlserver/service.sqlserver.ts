@@ -2,48 +2,14 @@
 
 import { getConnection } from "@/config/sqlserver";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
-import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
-import { getAllEmpleados, getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
+import { getProyectoModalidadTrabajo, getProyectoNomina } from "../proyecto/service.proyecto";
+import { getAllEmpleados, getAusentes, getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
 import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
+import { EmpleadoJornada, getMarcasSQLServerParametros, getNominaProyectoParametros, getPresentesParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
+import { getControlByProyecto } from "../control/service.control";
 
 const client = db;
-
-export type getMarcasSQLServerParametros = {
-    fecha: string; // formato ISO: YYYY-MM-DD
-    dispositivos: string[];
-};
-
-interface RegistroEmpleado {
-    fecha: string;
-    hora: string;
-    tipo: string;
-}
-
-interface EmpleadoJornada {
-    nombre: string;
-    registros: RegistroEmpleado[];
-    requiresManualReview: boolean;
-}
-
-interface ResultadoProcesado {
-    empleadosJornada: Map<string, EmpleadoJornada>;
-    importacionCompleta: boolean;
-}
-
-interface getPresentesParametros {
-    fecha: string;
-    dispositivos: string[];
-    filtroProyecto: number;
-    pagina: number;
-    filasPorPagina: number;
-}
-
-interface getPresentesExportarParametros {
-    fecha: string;
-    dispositivos: string[];
-    filtroProyecto: number;
-}
 
 export async function getMarcasSQLServer(parametros: getMarcasSQLServerParametros) {
     try {
@@ -84,7 +50,6 @@ export async function getMarcasSQLServer(parametros: getMarcasSQLServerParametro
 
 export async function getPresentes(parametros: getPresentesParametros) {
     try {
-
         const pool = await getConnection();
 
         const dispositivosPlaceholders = parametros.dispositivos.map((_, index) => `@${index + 2}`).join(', ');
@@ -116,29 +81,96 @@ export async function getPresentes(parametros: getPresentesParametros) {
 
         const idsEmpleadosPresentes = new Set(respuestaSQL.recordset.map(r => Number(r.id_empleado)));
 
-        const totalEmpleadosPG = await getEmpleadosPresentes({
-            filtroProyecto: parametros.filtroProyecto,
-        });
+        const totalEmpleadosPG = await getEmpleadosPresentes();
 
         const totalFiltrado = totalEmpleadosPG.empleados.filter(e => idsEmpleadosPresentes.has(e.id_reloj));
 
         const totalMensualizados = totalFiltrado.filter(e => e.id_tipoempleado === 2).length;
+
         const totalJornaleros = totalFiltrado.filter(e => e.id_tipoempleado != 2).length;
+
         const totalPresentes = totalFiltrado.length;
 
-        const inicio = parametros.pagina * parametros.filasPorPagina;
-        const fin = inicio + parametros.filasPorPagina;
+        const dispositivos = await getControlByProyecto({ id_proyecto: parametros.filtroProyecto })
 
-        const presentesPaginados = totalFiltrado.slice(inicio, fin);
+        let todosAusentes = [];
+        let totalAusentes = 0;
+        if (parametros.filtroProyecto !== 0) {
+            const idsAusentes = await getAusentes({
+                filtroProyecto: parametros.filtroProyecto,
+                fecha: parametros.fecha,
+                dispositivos
+            });
+            todosAusentes = totalEmpleadosPG.empleados
+                .filter(e => idsAusentes.includes(e.id_reloj))
+            totalAusentes = todosAusentes.length;
+        };
+
+        let presentes;
+
+        if (parametros.pagina !== undefined && parametros.filasPorPagina) {
+            const inicio = parametros.pagina * parametros.filasPorPagina;
+            const fin = inicio + parametros.filasPorPagina;
+            presentes = totalFiltrado.slice(inicio, fin);
+        } else {
+            presentes = totalFiltrado;
+        };
+
+        let ausentes;
+
+        if (parametros.pagina !== undefined && parametros.filasPorPagina) {
+            const inicio = parametros.pagina * parametros.filasPorPagina;
+            const fin = inicio + parametros.filasPorPagina;
+            ausentes = todosAusentes.slice(inicio, fin);
+        } else {
+            ausentes = todosAusentes;
+        };
 
         return {
             totalMensualizados,
             totalJornaleros,
             totalPresentes,
-            presentes: presentesPaginados,
+            totalAusentes,
+            presentes: presentes,
+            ausentes: ausentes,
         };
     } catch (error) {
         console.error("Error en getPresentes: ", error);
+        throw error;
+    };
+};//
+
+export async function getPresentesGlobal(parametros: getPresentesParametros) {
+    try {
+
+        const pool = await getConnection();
+
+        let textoFiltroBase = 'WHERE 1=1 ';
+
+        const texto = `
+            SELECT DISTINCT [id_empleado]
+            FROM [control_de_accesos].[dbo].[registros_acceso]
+            ${textoFiltroBase}
+            AND [fecha_acceso] = @1
+        `;
+
+        const llamada = pool.request();
+
+        llamada.input('1', parametros.fecha);
+
+        const respuestaSQL = await llamada.query(texto);
+
+        const idsEmpleadosPresentes = new Set(respuestaSQL.recordset.map(r => Number(r.id_empleado)));
+
+        const totalEmpleadosPG = await getEmpleadosPresentes();
+
+        const totalFiltrado = totalEmpleadosPG.empleados.filter(e => idsEmpleadosPresentes.has(e.id_reloj));
+
+        return {
+            presentes: totalFiltrado,
+        };
+    } catch (error) {
+        console.error("Error en getPresentesGlobal: ", error);
         throw error;
     };
 };//
@@ -319,46 +351,10 @@ export async function procesarMarcasEmpleados({ registros, id_proyecto }: { regi
     };
 };//
 
-export async function getPresentesExportar(parametros: getPresentesExportarParametros) {
-    try {
-
-        const pool = await getConnection();
-
-        const dispositivosPlaceholders = parametros.dispositivos.map((_, index) => `@${index + 2}`).join(', ');
-
-        let textoFiltroBase = 'WHERE 1=1 ';
-
-        if (parametros.filtroProyecto !== 0) {
-            textoFiltroBase += `AND [numero_serie_dispositivo] IN (${dispositivosPlaceholders}) `;
-        };
-
-        const texto = `
-            SELECT DISTINCT [id_empleado], [nombre]
-            FROM [control_de_accesos].[dbo].[registros_acceso]
-            ${textoFiltroBase}
-            AND [fecha_acceso] = @1
-        `;
-
-        const llamada = pool.request();
-
-        llamada.input('1', parametros.fecha);
-
-        if (parametros.filtroProyecto !== 0) {
-            parametros.dispositivos.forEach((dispositivo, index) => {
-                llamada.input(`${index + 2}`, dispositivo);
-            });
-        };
-
-        const respuestaSQL = await llamada.query(texto);
-
-        return respuestaSQL.recordset;
-    } catch (error) {
-        console.error("Error en getPresentes: ", error);
-        throw error;
-    };
-};//
-
-export async function generarExcelPresentes(presentes: Array<{ id_empleado: string | number; nombre: string }>) {
+export async function generarExcelPresentes(
+    presentes: Array<{ id_empleado: string | number; nombre: string }>,
+    ausentes: Array<{ id_empleado: string | number; nombre: string }>
+) {
     try {
         // Crear el workbook
         const workbook = new ExcelJS.Workbook();
@@ -367,29 +363,29 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
         workbook.creator = 'Sistema de Control de Accesos';
         workbook.created = new Date();
         workbook.modified = new Date();
-        workbook.description = 'Reporte de Empleados Presentes';
+        workbook.description = 'Reporte de Empleados Presentes y Ausentes';
 
-        // Crear la hoja de cálculo
-        const worksheet = workbook.addWorksheet('Presentes');
+        // ==================== HOJA DE PRESENTES ====================
+        const worksheetPresentes = workbook.addWorksheet('Presentes');
 
         // Definir las columnas
-        worksheet.columns = [
+        worksheetPresentes.columns = [
             { header: 'ID Empleado', key: 'id_empleado', width: 15 },
             { header: 'Nombre', key: 'nombre', width: 50 }
         ];
 
-        // Agregar los datos
+        // Agregar los datos de presentes
         presentes.forEach(presente => {
-            worksheet.addRow({
+            worksheetPresentes.addRow({
                 id_empleado: presente.id_empleado,
                 nombre: presente.nombre
             });
         });
 
-        // Estilizar el header
-        const headerRow = worksheet.getRow(1);
-        headerRow.height = 25;
-        headerRow.eachCell((cell) => {
+        // Estilizar el header de presentes
+        const headerRowPresentes = worksheetPresentes.getRow(1);
+        headerRowPresentes.height = 25;
+        headerRowPresentes.eachCell((cell) => {
             cell.font = {
                 bold: true,
                 color: { argb: 'FFFFFF' },
@@ -413,8 +409,8 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
             };
         });
 
-        // Aplicar estilos a las filas de datos
-        worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        // Aplicar estilos a las filas de datos de presentes
+        worksheetPresentes.eachRow({ includeEmpty: false }, (row, rowNumber) => {
             if (rowNumber > 1) {
                 row.height = 20;
 
@@ -449,17 +445,17 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
         });
 
         // Agregar fila vacía antes de los totales
-        worksheet.addRow({});
+        worksheetPresentes.addRow({});
 
-        // Agregar fila de totales
-        const totalRow = worksheet.addRow({
+        // Agregar fila de totales de presentes
+        const totalRowPresentes = worksheetPresentes.addRow({
             id_empleado: '',
             nombre: 'TOTAL: ' + presentes.length
         });
 
         // Estilizar la fila de totales
-        totalRow.height = 25;
-        totalRow.eachCell((cell, colNumber) => {
+        totalRowPresentes.height = 25;
+        totalRowPresentes.eachCell((cell, colNumber) => {
             cell.font = { bold: true, size: 11 };
             cell.border = {
                 top: { style: 'double', color: { argb: '000000' } },
@@ -468,7 +464,7 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
                 right: { style: 'thin', color: { argb: '000000' } }
             };
 
-            if (colNumber === 2) { // Columna nombre con "TOTAL:"
+            if (colNumber === 2) {
                 cell.alignment = { horizontal: 'left', vertical: 'middle' };
                 cell.fill = {
                     type: 'pattern',
@@ -479,21 +475,144 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
         });
 
         // Aplicar filtros automáticos
-        worksheet.autoFilter = {
+        worksheetPresentes.autoFilter = {
             from: 'A1',
             to: `B${presentes.length + 1}`
         };
 
         // Congelar la primera fila
-        worksheet.views = [{
+        worksheetPresentes.views = [{
             state: 'frozen',
             ySplit: 1
         }];
 
-        // Agregar información adicional en una hoja separada
+        // ==================== HOJA DE AUSENTES ====================
+        const worksheetAusentes = workbook.addWorksheet('Ausentes');
+
+        // Definir las columnas
+        worksheetAusentes.columns = [
+            { header: 'ID Empleado', key: 'id_empleado', width: 15 },
+            { header: 'Nombre', key: 'nombre', width: 50 }
+        ];
+
+        // Agregar los datos de ausentes
+        ausentes.forEach(ausente => {
+            worksheetAusentes.addRow({
+                id_empleado: ausente.id_empleado,
+                nombre: ausente.nombre
+            });
+        });
+
+        // Estilizar el header de ausentes (color rojo para diferenciar)
+        const headerRowAusentes = worksheetAusentes.getRow(1);
+        headerRowAusentes.height = 25;
+        headerRowAusentes.eachCell((cell) => {
+            cell.font = {
+                bold: true,
+                color: { argb: 'FFFFFF' },
+                size: 11
+            };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'C00000' } // Rojo para ausentes
+            };
+            cell.border = {
+                top: { style: 'thin', color: { argb: '000000' } },
+                left: { style: 'thin', color: { argb: '000000' } },
+                bottom: { style: 'thin', color: { argb: '000000' } },
+                right: { style: 'thin', color: { argb: '000000' } }
+            };
+            cell.alignment = {
+                horizontal: 'center',
+                vertical: 'middle',
+                wrapText: true
+            };
+        });
+
+        // Aplicar estilos a las filas de datos de ausentes
+        worksheetAusentes.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+            if (rowNumber > 1) {
+                row.height = 20;
+
+                // Alternar colores de fila (tonos rojizos para ausentes)
+                if (rowNumber % 2 === 0) {
+                    row.eachCell((cell) => {
+                        cell.fill = {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            fgColor: { argb: 'FFE6E6' } // Rojo muy claro
+                        };
+                    });
+                };
+
+                // Aplicar bordes y formato
+                row.eachCell((cell, colNumber) => {
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'CCCCCC' } },
+                        left: { style: 'thin', color: { argb: 'CCCCCC' } },
+                        bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+                        right: { style: 'thin', color: { argb: 'CCCCCC' } }
+                    };
+
+                    // Alineación específica por columna
+                    if (colNumber === 1) { // ID Empleado
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    } else if (colNumber === 2) { // Nombre
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                    };
+                });
+            };
+        });
+
+        // Agregar fila vacía antes de los totales
+        worksheetAusentes.addRow({});
+
+        // Agregar fila de totales de ausentes
+        const totalRowAusentes = worksheetAusentes.addRow({
+            id_empleado: '',
+            nombre: 'TOTAL: ' + ausentes.length
+        });
+
+        // Estilizar la fila de totales
+        totalRowAusentes.height = 25;
+        totalRowAusentes.eachCell((cell, colNumber) => {
+            cell.font = { bold: true, size: 11 };
+            cell.border = {
+                top: { style: 'double', color: { argb: '000000' } },
+                left: { style: 'thin', color: { argb: '000000' } },
+                bottom: { style: 'double', color: { argb: '000000' } },
+                right: { style: 'thin', color: { argb: '000000' } }
+            };
+
+            if (colNumber === 2) {
+                cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFCCCC' } // Rojo claro para totales
+                };
+            };
+        });
+
+        // Aplicar filtros automáticos
+        worksheetAusentes.autoFilter = {
+            from: 'A1',
+            to: `B${ausentes.length + 1}`
+        };
+
+        // Congelar la primera fila
+        worksheetAusentes.views = [{
+            state: 'frozen',
+            ySplit: 1
+        }];
+
+        // ==================== HOJA DE INFORMACIÓN ====================
         const infoSheet = workbook.addWorksheet('Información');
         infoSheet.addRow(['Reporte generado:', new Date().toLocaleString('es-AR')]);
         infoSheet.addRow(['Total de empleados presentes:', presentes.length]);
+        infoSheet.addRow(['Total de empleados ausentes:', ausentes.length]);
+        infoSheet.addRow(['Total general:', presentes.length + ausentes.length]);
 
         // Estilizar la hoja de información
         infoSheet.getColumn(1).width = 30;
@@ -507,7 +626,7 @@ export async function generarExcelPresentes(presentes: Array<{ id_empleado: stri
 
         return buffer;
     } catch (error) {
-        console.error('Error generando Excel de presentes:', error);
+        console.error('Error generando Excel de presentes y ausentes:', error);
         throw new Error('Error al generar el archivo Excel');
     };
 };//
@@ -559,4 +678,31 @@ export async function syncNomina() {
         console.error("Error en syncNomina: ", error);
         throw error;
     };
-};
+};//
+
+export async function getNominaProyecto(parametros: getNominaProyectoParametros) {
+    try {
+
+        const proyecto = await getProyectoNomina(parametros) as string;
+
+        const pool = await getConnection();
+
+        const texto = `
+            SELECT DISTINCT [Dni/Cuil] AS [id_empleado]
+            FROM [control_de_accesos].[dbo].[nomina]
+            WHERE [ESTADO] = 'ACTIVO'
+                AND [Proy.] = @1
+        `;
+
+        const llamada = pool.request();
+
+        llamada.input('1', proyecto);
+
+        const respuesta = await llamada.query(texto);
+
+        return respuesta.recordset;
+    } catch (error) {
+        console.log("Error en getNominaProyecto: ", error);
+        throw error;
+    };
+};//
