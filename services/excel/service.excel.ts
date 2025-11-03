@@ -6,12 +6,12 @@ import ExcelJS from "exceljs";
 import { db } from "@vercel/postgres";
 import { getEstadoImportacionIncompleta, getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
 import { insertImportacion } from "../importacion/service.importacion";
-import { getEstadoJornadaRevision, getEstadoJornadaSinValidar, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
+import { getEstadoJornadaRevision, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
 import { getAñoByValor, insertAño } from "../año/service.año";
 import { getMesByMes, insertMes } from "../mes/service.mes";
 import { getQuincenaByMes, insertQuincena } from "../quincena/service.quincena";
 import { getEmpleadoByRelojProyecto, getProyectoEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
-import { insertJornada } from "../jornada/service.jornada";
+import { insertJornada, recalculateJornadasEmpleado } from "../jornada/service.jornada";
 import { getFuenteMarcaControl } from "../fuentemarca/service.fuentemarca";
 import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
@@ -498,6 +498,8 @@ export async function createJornadas(parametros: jornadasParametros) {
           };
         };
       };
+
+      await recalculateJornadasEmpleado({id_empleado: id_empleado});
 
       contador++;
     };

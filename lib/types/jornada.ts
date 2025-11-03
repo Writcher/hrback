@@ -73,3 +73,7 @@ export type createAbsencesParametros = {
     id_usuario: number,
     id_importacion: number,
 };
+
+export type recalculateJornadasEmpleadoParametros = {
+    id_empleado: number
+};

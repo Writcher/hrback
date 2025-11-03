@@ -2,7 +2,7 @@
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getJornadasByImportacionParametros } from "@/lib/types/importacion";
-import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros, createAbsencesParametros } from "@/lib/types/jornada";
+import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros, createAbsencesParametros, recalculateJornadasEmpleadoParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { getMesQuincena } from "../excel/service.excel";
 import { getEstadoJornadaSinValidar, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
@@ -14,8 +14,7 @@ import { getTipoAusenciaInjustificada, getTipoAusenciaPendiente } from "../tipoa
 import { getTipoJornadaAusencia } from "../tipojornada/service.tipojornada";
 import { getFuenteMarcaControl, getFuenteMarcaManual } from "../fuentemarca/service.fuentemarca";
 import { getTipoImportacionAusentes } from "../tipoimportacion/service.tipoimportacion";
-import { getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
-import { insertImportacion } from "../importacion/service.importacion";
+
 
 const client = db;
 
@@ -588,6 +587,8 @@ export async function createJornada(parametros: createJornadaParametros) {
             };
         };
 
+        await recalculateJornadasEmpleado({id_empleado: parametros.id_empleado});
+
         await client.query('COMMIT');
     } catch (error) {
         await client.query('ROLLBACK');
@@ -714,3 +715,29 @@ export async function createAbsences(parametros: createAbsencesParametros) {
         throw error;
     };
 };//
+
+export async function recalculateJornadasEmpleado(parametros: recalculateJornadasEmpleadoParametros) {
+    try {
+        const texto = `
+            WITH ordenadas AS (
+                SELECT id
+                FROM jornada
+                WHERE id_empleado = $1
+                AND fecha >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '4 weeks')
+                ORDER BY fecha ASC
+            )
+            UPDATE jornada j
+            SET entrada = entrada,
+                salida = salida
+            FROM ordenadas o
+            WHERE j.id = o.id
+        `;
+
+        const valores = [parametros.id_empleado];
+
+        await client.query(texto, valores);
+    } catch (error) {
+        console.error("Error en recalculateJornadasEmpleado: ", error);
+        throw error;
+    };
+};
