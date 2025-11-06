@@ -9,7 +9,6 @@ export type getImportacionesParametros = {
 
 export type  getJornadasByImportacionParametros = {
     id_importacion: number;
-    filtroMarcasIncompletas: boolean;
     pagina: number;
     filasPorPagina: number;
 };

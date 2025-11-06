@@ -274,10 +274,8 @@ export async function getJornadasByImportacion(parametros: getJornadasByImportac
 
         let textoFiltroBase = 'WHERE j.id_importacion = $1 ';
 
-        if (parametros.filtroMarcasIncompletas) {
-            textoFiltroBase += 'AND j.id_estadojornada != $2 '
-            valoresBase.push(jornada_valida);
-        };
+        textoFiltroBase += 'AND j.id_estadojornada != $2 ';
+        valoresBase.push(jornada_valida);
 
         const valoresPrincipal = [...valoresBase, id_ausencia, parametros.filasPorPagina, offset];
 

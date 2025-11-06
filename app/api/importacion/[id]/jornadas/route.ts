@@ -12,7 +12,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         const url = new URL(request.url);
 
-        const filtroMarcasIncompletas = url.searchParams.get("filtroMarcasIncompletas") === "true";
         const pagina = Number(url.searchParams.get("pagina"));
         const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
 
@@ -28,7 +27,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         const getImportacionJornadasParametros = {
             id_importacion,
-            filtroMarcasIncompletas,
             pagina,
             filasPorPagina
         };
