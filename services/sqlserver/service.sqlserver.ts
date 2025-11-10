@@ -680,7 +680,6 @@ export async function syncNomina() {
                 const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
 
                 if (!id_proyecto) {
-                    console.warn(`Proyecto no encontrado para la nómina: ${data.proyecto}. Empleado ${data.nombre} ${data.apellido} no será creado.`);
                     continue;
                 };
 
