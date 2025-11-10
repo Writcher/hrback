@@ -25,3 +25,7 @@ export type getProyectosABMParametros = {
 export type getProyectoNominaParametros = {
     id_proyecto: number,
 };
+
+export type getProyectoByNominaParametros = {
+    nomina: string,
+};

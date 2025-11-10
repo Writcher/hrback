@@ -2,12 +2,13 @@
 
 import { getConnection } from "@/config/sqlserver";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
-import { getProyectoModalidadTrabajo, getProyectoNomina } from "../proyecto/service.proyecto";
+import { getProyectoByNomina, getProyectoModalidadTrabajo, getProyectoNomina } from "../proyecto/service.proyecto";
 import { getAllEmpleados, getAusentes, getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
 import ExcelJS from "exceljs";
-import { db } from "@vercel/postgres";
+import { db, QueryResult } from "@vercel/postgres";
 import { EmpleadoJornada, getMarcasSQLServerParametros, getNominaProyectoParametros, getPresentesParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
 import { getControlByProyecto } from "../control/service.control";
+import { getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 
 const client = db;
 
@@ -633,52 +634,83 @@ export async function generarExcelPresentes(
 
 export async function syncNomina() {
     try {
-
         const pool = await getConnection();
-
         const texto = `
-            SELECT DISTINCT [Dni/Cuil], [Legajo]
+            SELECT DISTINCT [Dni/Cuil], [Legajo], [Apellido], [Nombre], [Proy.]
             FROM [control_de_accesos].[dbo].[nomina]
             WHERE [ESTADO] = 'ACTIVO'
         `;
-
         const llamada = pool.request();
-
         const respuestaSQL = await llamada.query(texto);
-
         const respuestaPG = await getAllEmpleados();
-
-        const legajoMap = new Map();
+        
+        const sqlServerMap = new Map();
         respuestaSQL.recordset.forEach(row => {
             const dniCuil = row['Dni/Cuil'];
             if (dniCuil && dniCuil.length > 3) {
-                // Cut first 2 and last 1 characters
                 const processedDni = dniCuil.slice(2, -1);
-                legajoMap.set(Number(processedDni), row['Legajo']);
+                sqlServerMap.set(Number(processedDni), {
+                    legajo: row['Legajo'],
+                    apellido: row['Apellido'],
+                    nombre: row['Nombre'],
+                    proyecto: row['Proy.']
+                });
             };
         });
-
-        console.log(legajoMap)
-
-        const updatePromises = respuestaPG
-            .filter(emp => legajoMap.has(emp.id_reloj))
-            .map(emp => {
-                const legajo = legajoMap.get(emp.id_reloj);
+        
+        const existingIdRelojes = new Set(respuestaPG.map(emp => emp.id_reloj));
+        
+        const updatePromises: Promise<QueryResult<any>>[] = [];
+        const insertPromises: Promise<QueryResult<any>>[] = [];
+        
+        // Use for...of instead of forEach to properly handle async/await
+        for (const [idReloj, data] of sqlServerMap.entries()) {
+            if (existingIdRelojes.has(idReloj)) {
+                // Employee exists - update legajo
+                const emp = respuestaPG.find(e => e.id_reloj === idReloj);
+                
                 const updateQuery = `
                     UPDATE empleado 
                     SET legajo = $1 
                     WHERE id = $2
                 `;
-                return client.query(updateQuery, [legajo, emp.id]);
-            });
+                updatePromises.push(client.query(updateQuery, [data.legajo, emp.id]));
+            } else {
+                // Employee doesn't exist - create new one
+                const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
 
-        await Promise.all(updatePromises);
+                if (!id_proyecto) {
+                    console.warn(`Proyecto no encontrado para la nómina: ${data.proyecto}. Empleado ${data.nombre} ${data.apellido} no será creado.`);
+                    continue;
+                };
 
+                const id_estadoempleado = await getEstadoEmpleadoActivo();
+                const nombre = `${data.nombre} ${data.apellido}`;
+                const insertQuery = `
+                    INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado)
+                    VALUES ($1, $2, $3, $4, $5)
+                `;
+                insertPromises.push(
+                    client.query(insertQuery, [
+                        nombre,
+                        idReloj,
+                        data.legajo,
+                        id_proyecto,
+                        id_estadoempleado
+                    ])
+                );
+            };
+        };
+        
+        await Promise.all([...updatePromises, ...insertPromises]);
+        
+        console.log(`Sync completed: ${updatePromises.length} updated, ${insertPromises.length} created`);
+        
     } catch (error) {
         console.error("Error en syncNomina: ", error);
         throw error;
     };
-};//
+};
 
 export async function getNominaProyecto(parametros: getNominaProyectoParametros) {
     try {
