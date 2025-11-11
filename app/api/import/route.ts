@@ -7,8 +7,19 @@ import { getAusentes } from "@/services/empleado/service.empleado";
 import { createAbsences } from "@/services/jornada/service.jornada";
 
 export async function POST(req: NextRequest) {
-  const { error, payload } = await verifyAuthToken(req);
-  if (error) return error;
+  let payload;
+
+  const cronSecret = req.headers.get('x-cron-secret');
+
+  if (cronSecret === process.env.CRON_SECRET) {
+    payload = { id: 9 };
+  } else {
+    const result = await verifyAuthToken(req);
+
+    if (result.error) return result.error;
+
+    payload = result.payload;
+  };
 
   try {
     const formData = await req.formData();
