@@ -100,12 +100,23 @@ export async function GET(request: NextRequest) {
     };
 };
 
-export async function POST(request: NextRequest) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
+export async function POST(req: NextRequest) {
+    let payload;
+
+    const cronSecret = req.headers.get('x-cron-secret');
+
+    if (cronSecret === process.env.CRON_SECRET) {
+        payload = { id: 9 };
+    } else {
+        const result = await verifyAuthToken(req);
+
+        if (result.error) return result.error;
+
+        payload = result.payload;
+    };
 
     try {
-        
+
         await syncNomina();
 
         return NextResponse.json({ status: 200 });

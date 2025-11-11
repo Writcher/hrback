@@ -4,38 +4,21 @@ import sql from 'mssql';
 
 let pool: sql.ConnectionPool | null = null;
 
-function parseConnectionString(connectionString: string): sql.config {
-
-    const withoutProtocol = connectionString.replace('mssql://', '');
-    
-    const [credentials, serverAndRest] = withoutProtocol.split('@');
-    const [user, password] = credentials.split(':');
-    
-    const [serverWithPort, databaseAndParams] = serverAndRest.split('/');
-    const [server, port] = serverWithPort.split(':');
-    
-    const [database, paramsString] = databaseAndParams.split('?');
-    
-    const params = new URLSearchParams(paramsString);
-    
-    return {
-        user: user,
-        password: password,
-        server: server,
-        port: port ? parseInt(port) : 1433,
-        database: database,
-        options: {
-            encrypt: params.get('encrypt') === 'true',
-            trustServerCertificate: params.get('trustServerCertificate') === 'true'
-        }
-    };
-};
-
 export async function getConnection() {
     if (pool) return pool;
-    
+
     try {
-        const config = parseConnectionString(process.env.SQLSERVER_URL!);
+        const config: sql.config = {
+            user: process.env.SQLSERVER_USER!,
+            password: process.env.SQLSERVER_PASSWORD!,
+            server: process.env.SQLSERVER_SERVER!,
+            port: process.env.SQLSERVER_PORT ? parseInt(process.env.SQLSERVER_PORT) : 1433,
+            database: process.env.SQLSERVER_DATABASE!,
+            options: {
+                encrypt: process.env.SQLSERVER_ENCRYPT === 'true',
+                trustServerCertificate: process.env.SQLSERVER_TRUST_CERT === 'true'
+            }
+        };
 
         pool = await sql.connect(config);
 
