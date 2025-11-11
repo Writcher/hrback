@@ -639,6 +639,7 @@ export async function syncNomina() {
             SELECT DISTINCT [Dni/Cuil], [Legajo], [Apellido], [Nombre], [Proy.]
             FROM [control_de_accesos].[dbo].[nomina]
             WHERE [ESTADO] = 'ACTIVO'
+                AND [Apellido] NOT LIKE '%GARIN ODRIOZOLA%'
         `;
         const llamada = pool.request();
         const respuestaSQL = await llamada.query(texto);
@@ -722,6 +723,7 @@ export async function getNominaProyecto(parametros: getNominaProyectoParametros)
             SELECT DISTINCT [Dni/Cuil] AS [id_empleado]
             FROM [control_de_accesos].[dbo].[nomina]
             WHERE [ESTADO] = 'ACTIVO'
+                AND [Apellido] NOT LIKE '%GARIN ODRIOZOLA%'
                 AND [Proy.] = @1
         `;
 
