@@ -724,9 +724,8 @@ export async function getNominaProyecto(parametros: getNominaProyectoParametros)
         const texto = `
             SELECT DISTINCT [dni_cuil] AS [id_empleado]
             FROM [control_de_accesos].[dbo].[nomina]
-            WHERE [estado] = 'ACTIVO'
-                AND [proy] = @1
-                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
+            WHERE [ESTADO] = 'ACTIVO'
+                AND [Proy.] = @1
         `;
 
         const llamada = pool.request();
