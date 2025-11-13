@@ -725,7 +725,7 @@ export async function getNominaProyecto(parametros: getNominaProyectoParametros)
             SELECT DISTINCT [dni_cuil] AS [id_empleado]
             FROM [control_de_accesos].[dbo].[nomina]
             WHERE [ESTADO] = 'ACTIVO'
-                AND [Proy.] = @1
+                AND [proy] = @1
                 AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
         `;
 
