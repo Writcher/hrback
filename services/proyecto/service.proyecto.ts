@@ -179,7 +179,7 @@ export async function getProyectoByNomina(parametros: getProyectoByNominaParamet
 
         const respuesta = await client.query(texto, valores);
 
-        if (respuesta.rows.length === 0) {
+        if (!respuesta || !respuesta.rows || respuesta.rows.length === 0) {
             return null;
         };
 

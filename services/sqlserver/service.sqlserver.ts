@@ -636,39 +636,43 @@ export async function syncNomina() {
     try {
         const pool = await getConnection();
         const texto = `
-            SELECT DISTINCT [Dni/Cuil], [Legajo], [Apellido], [Nombre], [Proy.]
+            SELECT DISTINCT [dni_cuil], [legajo], [apellido], [nombre], [proy]
             FROM [control_de_accesos].[dbo].[nomina]
-            WHERE [ESTADO] = 'ACTIVO'
+            WHERE [estado] = 'ACTIVO'
+                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
         `;
         const llamada = pool.request();
         const respuestaSQL = await llamada.query(texto);
         const respuestaPG = await getAllEmpleados();
-        
+
         const sqlServerMap = new Map();
         respuestaSQL.recordset.forEach(row => {
-            const dniCuil = row['Dni/Cuil'];
+            const dniCuil = row['dni_cuil'];
             if (dniCuil && dniCuil.length > 3) {
                 const processedDni = dniCuil.slice(2, -1);
                 sqlServerMap.set(Number(processedDni), {
-                    legajo: row['Legajo'],
-                    apellido: row['Apellido'],
-                    nombre: row['Nombre'],
-                    proyecto: row['Proy.']
+                    legajo: row['legajo'],
+                    apellido: row['apellido'],
+                    nombre: row['nombre'],
+                    proyecto: row['proy']
                 });
             };
         });
-        
+
         const existingIdRelojes = new Set(respuestaPG.map(emp => emp.id_reloj));
-        
+
         const updatePromises: Promise<QueryResult<any>>[] = [];
         const insertPromises: Promise<QueryResult<any>>[] = [];
-        
-        // Use for...of instead of forEach to properly handle async/await
+
         for (const [idReloj, data] of sqlServerMap.entries()) {
             if (existingIdRelojes.has(idReloj)) {
-                // Employee exists - update legajo
                 const emp = respuestaPG.find(e => e.id_reloj === idReloj);
-                
+
+                if (!emp) {
+                    console.error(`Employee with id_reloj ${idReloj} not found in respuestaPG`);
+                    continue;
+                };
+
                 const updateQuery = `
                     UPDATE empleado 
                     SET legajo = $1 
@@ -676,7 +680,6 @@ export async function syncNomina() {
                 `;
                 updatePromises.push(client.query(updateQuery, [data.legajo, emp.id]));
             } else {
-                // Employee doesn't exist - create new one
                 const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
 
                 if (!id_proyecto) {
@@ -700,11 +703,11 @@ export async function syncNomina() {
                 );
             };
         };
-        
+
         await Promise.all([...updatePromises, ...insertPromises]);
-        
+
         console.log(`Sync completed: ${updatePromises.length} updated, ${insertPromises.length} created`);
-        
+
     } catch (error) {
         console.error("Error en syncNomina: ", error);
         throw error;
@@ -719,10 +722,11 @@ export async function getNominaProyecto(parametros: getNominaProyectoParametros)
         const pool = await getConnection();
 
         const texto = `
-            SELECT DISTINCT [Dni/Cuil] AS [id_empleado]
+            SELECT DISTINCT [dni_cuil] AS [id_empleado]
             FROM [control_de_accesos].[dbo].[nomina]
-            WHERE [ESTADO] = 'ACTIVO'
-                AND [Proy.] = @1
+            WHERE [estado] = 'ACTIVO'
+                AND [proy] = @1
+                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
         `;
 
         const llamada = pool.request();
