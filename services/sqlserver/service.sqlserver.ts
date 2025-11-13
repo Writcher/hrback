@@ -726,6 +726,7 @@ export async function getNominaProyecto(parametros: getNominaProyectoParametros)
             FROM [control_de_accesos].[dbo].[nomina]
             WHERE [ESTADO] = 'ACTIVO'
                 AND [Proy.] = @1
+                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
         `;
 
         const llamada = pool.request();
