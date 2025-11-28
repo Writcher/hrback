@@ -3,12 +3,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
-interface JWTPayload {
+type JWTPayload = {
     id: string;
     correo: string;
     tipoUsuario: string;
     exp: number;
-}
+};
 
 const SECRET = process.env.AUTH_SECRET!;
 

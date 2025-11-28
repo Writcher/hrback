@@ -1,42 +1,55 @@
 "use server"
 
 import { insertAusenciaParametros, updateAusenciaTipoAusenciaParametros } from "@/lib/types/ausencia";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function insertAusencia(parametros: insertAusenciaParametros) {
-    try {
-        const texto = `
-            INSERT INTO ausencia (id_empleado, id_tipoausencia)
-            VALUES ($1, $2)
-            RETURNING id
-        `;
+    return executeQuery(
+        'insertAusencia',
+        async () => {
+            
+            const insertQuery = `
+                INSERT INTO ausencia (id_empleado, id_tipoausencia)
+                VALUES ($1, $2)
+                RETURNING id
+            `;
 
-        const valores = [parametros.id_empleado, parametros.id_tipoausencia];
+            const insertResult = await client.query(insertQuery, [
+                parametros.id_empleado,
+                parametros.id_tipoausencia
+            ]);
 
-        const resultado = await client.query(texto, valores);
+            checkRowsAffected(insertResult, 'Ausencia');
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertAusencia: ", error);
-        throw error;
-    };
-};
+            return insertResult.rows[0].id;
+        },
+
+        parametros
+    );
+};//
 
 export async function updateAusenciaTipoAusencia(parametros: updateAusenciaTipoAusenciaParametros) {
-    try {
-        const texto = `
-            UPDATE ausencia
-            SET id_tipoausencia = $1
-            WHERE id = $2
-        `;
+    return executeQuery(
+        'updateAusenciaTipoAusencia',
+        async () => {
 
-        const valores = [parametros.id_tipoAusencia, parametros.id];
+            const updateQuery = `
+                UPDATE ausencia
+                SET id_tipoausencia = $1
+                WHERE id = $2
+            `;
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en updateAusenciaTipoAusencia: ", error);
-        throw error;
-    };
-};
+            const updateResult = await client.query(updateQuery, [
+                parametros.id_tipoAusencia,
+                parametros.id
+            ]);
+
+            checkRowsAffected(updateResult, 'Ausencia');
+        },
+
+        parametros
+    );
+};//

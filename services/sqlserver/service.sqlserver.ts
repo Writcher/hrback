@@ -3,185 +3,261 @@
 import { getConnection } from "@/config/sqlserver";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
 import { getProyectoByNomina, getProyectoModalidadTrabajo, getProyectoNomina } from "../proyecto/service.proyecto";
-import { getAllEmpleados, getAusentes, getEmpleadosPresentes, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
+import { getAllEmpleados, getEmpleadosAsistencia, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
 import ExcelJS from "exceljs";
 import { db, QueryResult } from "@vercel/postgres";
-import { EmpleadoJornada, getMarcasSQLServerParametros, getNominaProyectoParametros, getPresentesParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
-import { getControlByProyecto } from "../control/service.control";
+import { EmpleadoJornada, getMarcasSQLServerParametros, getPresentesProyectoParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
 import { getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
+import { executeQuery } from "@/lib/utils/database";
+import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
+import { getAusentesParametros } from "@/lib/types/empleado";
 
 const client = db;
 
 export async function getMarcasSQLServer(parametros: getMarcasSQLServerParametros) {
-    try {
-        const pool = await getConnection();
+    return executeQuery(
+        'getMarcasSQLServer',
+        async () => {
 
-        const { dispositivos, fecha } = parametros;
+            const pool = await getConnection();
 
-        const dispositivosPlaceholders = dispositivos.map((_, index) => `@${index + 2}`).join(', ');
+            const dispositivosIndex = parametros.dispositivos.map((_, index) => `@${index + 2}`).join(', ');
 
-        const texto = `
-            SELECT 
-                [fecha_acceso],
-                [hora_acceso],
-                [nombre],
-                [id_empleado]
-            FROM [control_de_accesos].[dbo].[registros_acceso]
-            WHERE [fecha_acceso] = @1
-            AND [numero_serie_dispositivo] IN (${dispositivosPlaceholders})
-            ORDER BY [nombre] ASC
-        `;
+            const getQuery = `
+                SELECT 
+                    [fecha_acceso],
+                    [hora_acceso],
+                    [nombre],
+                    [id_empleado]
+                FROM [control_de_accesos].[dbo].[registros_acceso]
+                WHERE [fecha_acceso] = @1
+                AND [numero_serie_dispositivo] IN (${dispositivosIndex})
+                ORDER BY [nombre] ASC
+            `;
 
-        const llamada = pool.request();
+            const query = pool.request();
 
-        llamada.input('1', fecha);
+            query.input('1', parametros.fecha);
 
-        dispositivos.forEach((dispositivo, index) => {
-            llamada.input(`${index + 2}`, dispositivo);
-        });
-
-        const respuesta = await llamada.query(texto);
-
-        return respuesta.recordset;
-    } catch (error) {
-        console.error("Error en getMarcasSQLServer: ", error);
-        throw error;
-    };
-};//
-
-export async function getPresentes(parametros: getPresentesParametros) {
-    try {
-        const pool = await getConnection();
-
-        const dispositivosPlaceholders = parametros.dispositivos.map((_, index) => `@${index + 2}`).join(', ');
-
-        let textoFiltroBase = 'WHERE 1=1 ';
-
-        if (parametros.filtroProyecto !== 0) {
-            textoFiltroBase += `AND [numero_serie_dispositivo] IN (${dispositivosPlaceholders}) `;
-        };
-
-        const texto = `
-            SELECT DISTINCT [id_empleado]
-            FROM [control_de_accesos].[dbo].[registros_acceso]
-            ${textoFiltroBase}
-            AND [fecha_acceso] = @1
-        `;
-
-        const llamada = pool.request();
-
-        llamada.input('1', parametros.fecha);
-
-        if (parametros.filtroProyecto !== 0) {
             parametros.dispositivos.forEach((dispositivo, index) => {
-                llamada.input(`${index + 2}`, dispositivo);
+                query.input(`${index + 2}`, dispositivo);
             });
-        };
 
-        const respuestaSQL = await llamada.query(texto);
+            const getResult = await query.query(getQuery);
 
-        const idsEmpleadosPresentes = new Set(respuestaSQL.recordset.map(r => Number(r.id_empleado)));
+            return getResult.recordset
+        },
 
-        const totalEmpleadosPG = await getEmpleadosPresentes();
-
-        const totalFiltrado = totalEmpleadosPG.empleados.filter(e => idsEmpleadosPresentes.has(e.id_reloj));
-
-        const totalMensualizados = totalFiltrado.filter(e => e.id_tipoempleado === 2).length;
-
-        const totalJornaleros = totalFiltrado.filter(e => e.id_tipoempleado != 2).length;
-
-        const totalPresentes = totalFiltrado.length;
-
-        const dispositivos = await getControlByProyecto({ id_proyecto: parametros.filtroProyecto })
-
-        let todosAusentes = [];
-        let totalAusentes = 0;
-        if (parametros.filtroProyecto !== 0) {
-            const idsAusentes = await getAusentes({
-                filtroProyecto: parametros.filtroProyecto,
-                fecha: parametros.fecha,
-                dispositivos
-            });
-            todosAusentes = totalEmpleadosPG.empleados
-                .filter(e => idsAusentes.includes(e.id_reloj))
-            totalAusentes = todosAusentes.length;
-        };
-
-        let presentes;
-
-        if (parametros.pagina !== undefined && parametros.filasPorPagina) {
-            const inicio = parametros.pagina * parametros.filasPorPagina;
-            const fin = inicio + parametros.filasPorPagina;
-            presentes = totalFiltrado.slice(inicio, fin);
-        } else {
-            presentes = totalFiltrado;
-        };
-
-        let ausentes;
-
-        if (parametros.pagina !== undefined && parametros.filasPorPagina) {
-            const inicio = parametros.pagina * parametros.filasPorPagina;
-            const fin = inicio + parametros.filasPorPagina;
-            ausentes = todosAusentes.slice(inicio, fin);
-        } else {
-            ausentes = todosAusentes;
-        };
-
-        return {
-            totalMensualizados,
-            totalJornaleros,
-            totalPresentes,
-            totalAusentes,
-            presentes: presentes,
-            ausentes: ausentes,
-        };
-    } catch (error) {
-        console.error("Error en getPresentes: ", error);
-        throw error;
-    };
+        parametros
+    );
 };//
 
-export async function getPresentesGlobal(parametros: getPresentesParametros) {
-    try {
+export async function getPresentesProyecto(parametros: getPresentesProyectoParametros) {
+    return executeQuery(
+        'getPresentesProyecto',
+        async () => {
 
-        const pool = await getConnection();
+            const pool = await getConnection();
 
-        let textoFiltroBase = 'WHERE 1=1 ';
+            const dispositivosIndex = parametros.dispositivos.map((_, index) => `@${index + 2}`).join(', ');
 
-        const texto = `
-            SELECT DISTINCT [id_empleado]
-            FROM [control_de_accesos].[dbo].[registros_acceso]
-            ${textoFiltroBase}
-            AND [fecha_acceso] = @1
-        `;
+            const getQuery = `
+                SELECT DISTINCT [id_empleado]
+                FROM [control_de_accesos].[dbo].[registros_acceso]
+                WHERE [fecha_acceso] = @1
+                    AND [numero_serie_dispositivo] IN (${dispositivosIndex})
+            `;
 
-        const llamada = pool.request();
+            const query = pool.request();
 
-        llamada.input('1', parametros.fecha);
+            query.input('1', parametros.fecha);
 
-        const respuestaSQL = await llamada.query(texto);
+            parametros.dispositivos.forEach((dispositivo, index) => {
+                query.input(`${index + 2}`, dispositivo)
+            });
 
-        const idsEmpleadosPresentes = new Set(respuestaSQL.recordset.map(r => Number(r.id_empleado)));
+            const getResult = await query.query(getQuery);
 
-        const totalEmpleadosPG = await getEmpleadosPresentes();
+            const ids_presentes = new Set(getResult.recordset.map(result => Number(result.id_empleado)));
 
-        const totalFiltrado = totalEmpleadosPG.empleados.filter(e => idsEmpleadosPresentes.has(e.id_reloj));
+            const empleados = await getEmpleadosAsistencia();
 
-        return {
-            presentes: totalFiltrado,
-        };
-    } catch (error) {
-        console.error("Error en getPresentesGlobal: ", error);
-        throw error;
-    };
+            const empleadosPresentes = empleados.empleados.filter(empleado => ids_presentes.has(empleado.id_reloj));
+
+            const id_tipoempleado = await getTipoEmpleadoMensualizado();
+
+            const totalPresentesIndirectos = empleadosPresentes.filter(empleado => empleado.id_tipoempleado === id_tipoempleado).length;
+
+            const totalPresentesDirectos = empleadosPresentes.filter(empleado => empleado.id_tipoempleado != id_tipoempleado).length;
+
+            const totalPresentes = empleadosPresentes.length;
+
+            let presentes;
+
+            if (parametros.pagina !== undefined && parametros.filasPorPagina) {
+                const inicio = parametros.pagina * parametros.filasPorPagina;
+                const fin = inicio + parametros.filasPorPagina;
+                presentes = empleadosPresentes.slice(inicio, fin);
+            } else {
+                presentes = empleadosPresentes;
+            };
+
+            const ids_ausentes = await getAusentesProyecto({
+                filtroProyecto: parametros.filtroProyecto,
+                fecha: parametros.fecha
+            });
+
+            const empleadosAusentes = empleados.empleados.filter(empleado => ids_ausentes.includes(empleado.id_reloj));
+
+            const totalAusentes = empleadosAusentes.length;
+
+            let ausentes;
+
+            if (parametros.pagina !== undefined && parametros.filasPorPagina) {
+                const inicio = parametros.pagina * parametros.filasPorPagina;
+                const fin = inicio + parametros.filasPorPagina;
+                ausentes = empleadosAusentes.slice(inicio, fin);
+            } else {
+                ausentes = empleadosAusentes;
+            };
+
+            return {
+                totalMensualizados: totalPresentesIndirectos,
+                totalJornaleros: totalPresentesDirectos,
+                totalPresentes,
+                totalAusentes,
+                presentes: presentes,
+                ausentes: ausentes,
+            };
+        },
+
+        parametros
+    );
+};//
+
+export async function getAusentesProyecto(parametros: getAusentesParametros) {
+    return executeQuery(
+        'getAusentesProyecto',
+        async () => {
+
+            const pool = await getConnection();
+
+            const proy = await getProyectoNomina({ id_proyecto: parametros.filtroProyecto });
+
+            const getQuery = `
+                SELECT DISTINCT CAST(SUBSTRING(n.[dni_cuil], 3, LEN(n.[dni_cuil]) - 3) AS INT) AS [id_empleado]
+                FROM [control_de_accesos].[dbo].[nomina] n
+                WHERE n.[ESTADO] = 'ACTIVO'
+                    AND n.[proy] = @1
+                    AND n.[apellido] NOT LIKE '%GARIN ODRIOZOLA%'
+                    AND CAST(SUBSTRING(n.[dni_cuil], 3, LEN(n.[dni_cuil]) - 3) AS INT) NOT IN (
+                        SELECT DISTINCT [id_empleado]
+                        FROM [control_de_accesos].[dbo].[registros_acceso]
+                        WHERE [fecha_acceso] = @2
+                    )
+            `;
+
+            const query = pool.request();
+
+            query.input('1', proy);
+
+            query.input('2', parametros.fecha);
+
+            const getResult = await query.query(getQuery);
+
+            return getResult.recordset.map(result => result.id_empleado);
+        },
+
+        parametros
+    );
+};//
+
+export async function syncNomina() {
+    return executeQuery(
+        'syncNomina',
+        async () => {
+
+            const pool = await getConnection();
+
+            const getQuery = `
+                SELECT DISTINCT CAST(SUBSTRING([dni_cuil], 3, LEN([dni_cuil]) - 3) AS INT) AS [id_reloj], [legajo], [apellido], [nombre], [proy]
+                FROM [control_de_accesos].[dbo].[nomina]
+                WHERE [estado] = 'ACTIVO'
+                    AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
+            `;
+
+            const getResult = await pool.request().query(getQuery);
+
+            const empleados = await getAllEmpleados();
+            const empleadosMap = new Map(empleados.map(empleado => [empleado.id_reloj, empleado]));
+
+            const nomina = new Map();
+
+            getResult.recordset.forEach(fila => {
+                nomina.set(fila.id_reloj, {
+                    legajo: fila['legajo'],
+                    apellido: fila['apellido'],
+                    nombre: fila['nombre'],
+                    proyecto: fila['proy']
+                });
+            });
+
+            const ids_reloj = new Set(empleados.map(empleado => empleado.id_reloj));
+
+            const updatePromises: Promise<QueryResult<any>>[] = [];
+            const insertPromises: Promise<QueryResult<any>>[] = [];
+
+            for (const [id_reloj, data] of nomina.entries()) {
+                if (ids_reloj.has(id_reloj)) {
+
+                    const empleado = empleadosMap.get(id_reloj);
+
+                    const updateQuery = `
+                        UPDATE empleado
+                        SET legajo = $1
+                        WHERE id = $2
+                    `;
+
+                    updatePromises.push(client.query(updateQuery, [data.legajo, empleado.id]))
+
+                } else {
+
+                    const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
+
+                    if (id_proyecto === null) continue;
+
+                    const id_estadoempleado = await getEstadoEmpleadoActivo();
+                    const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
+
+                    const insertQuery = ` 
+                        INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado)
+                        VALUES ($1, $2, $3, $4, $5)
+                    `;
+
+                    insertPromises.push(
+                        client.query(insertQuery, [
+                            nombreapellido,
+                            id_reloj,
+                            data.legajo,
+                            id_proyecto,
+                            id_estadoempleado
+                        ])
+                    );
+
+                };
+            };
+
+            await Promise.allSettled([...updatePromises, ...insertPromises]);
+
+            console.log('Sync completed.')
+        }
+    );
 };//
 
 export async function procesarMarcasEmpleados({ registros, id_proyecto }: { registros: any[], id_proyecto: number }): Promise<ResultadoProcesado> {
 
     const modalidad_proyecto = await getProyectoModalidadTrabajo({ id_proyecto });
-
     const modalidad_corrido = await getModalidadTrabajoCorrido();
-
     const empleadosNocturnosArray = await getProyectoEmpleadosNocturnos({ id_proyecto });
     const empleadosNocturnos = new Set(empleadosNocturnosArray);
 
@@ -630,114 +706,4 @@ export async function generarExcelPresentes(
         console.error('Error generando Excel de presentes y ausentes:', error);
         throw new Error('Error al generar el archivo Excel');
     };
-};//
-
-export async function syncNomina() {
-    try {
-        const pool = await getConnection();
-        const texto = `
-            SELECT DISTINCT [dni_cuil], [legajo], [apellido], [nombre], [proy]
-            FROM [control_de_accesos].[dbo].[nomina]
-            WHERE [estado] = 'ACTIVO'
-                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
-        `;
-        const llamada = pool.request();
-        const respuestaSQL = await llamada.query(texto);
-        const respuestaPG = await getAllEmpleados();
-
-        const sqlServerMap = new Map();
-        respuestaSQL.recordset.forEach(row => {
-            const dniCuil = row['dni_cuil'];
-            if (dniCuil && dniCuil.length > 3) {
-                const processedDni = dniCuil.slice(2, -1);
-                sqlServerMap.set(Number(processedDni), {
-                    legajo: row['legajo'],
-                    apellido: row['apellido'],
-                    nombre: row['nombre'],
-                    proyecto: row['proy']
-                });
-            };
-        });
-
-        const existingIdRelojes = new Set(respuestaPG.map(emp => emp.id_reloj));
-
-        const updatePromises: Promise<QueryResult<any>>[] = [];
-        const insertPromises: Promise<QueryResult<any>>[] = [];
-
-        for (const [idReloj, data] of sqlServerMap.entries()) {
-            if (existingIdRelojes.has(idReloj)) {
-                const emp = respuestaPG.find(e => e.id_reloj === idReloj);
-
-                if (!emp) {
-                    console.error(`Employee with id_reloj ${idReloj} not found in respuestaPG`);
-                    continue;
-                };
-
-                const updateQuery = `
-                    UPDATE empleado 
-                    SET legajo = $1 
-                    WHERE id = $2
-                `;
-                updatePromises.push(client.query(updateQuery, [data.legajo, emp.id]));
-            } else {
-                const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
-
-                if (!id_proyecto) {
-                    continue;
-                };
-
-                const id_estadoempleado = await getEstadoEmpleadoActivo();
-                const nombre = `${data.nombre} ${data.apellido}`;
-                const insertQuery = `
-                    INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado)
-                    VALUES ($1, $2, $3, $4, $5)
-                `;
-                insertPromises.push(
-                    client.query(insertQuery, [
-                        nombre,
-                        idReloj,
-                        data.legajo,
-                        id_proyecto,
-                        id_estadoempleado
-                    ])
-                );
-            };
-        };
-
-        await Promise.all([...updatePromises, ...insertPromises]);
-
-        console.log(`Sync completed: ${updatePromises.length} updated, ${insertPromises.length} created`);
-
-    } catch (error) {
-        console.error("Error en syncNomina: ", error);
-        throw error;
-    };
 };
-
-export async function getNominaProyecto(parametros: getNominaProyectoParametros) {
-    try {
-
-        const proyecto = await getProyectoNomina(parametros) as string;
-
-        const pool = await getConnection();
-
-        const texto = `
-            SELECT DISTINCT [dni_cuil] AS [id_empleado]
-            FROM [control_de_accesos].[dbo].[nomina]
-            WHERE [ESTADO] = 'ACTIVO'
-                AND [proy] = @1
-                AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
-        `;
-
-        const llamada = pool.request();
-
-        llamada.input('1', proyecto);
-
-        const respuesta = await llamada.query(texto);
-
-        return respuesta.recordset;
-    } catch (error) {
-        console.log("Error en getNominaProyecto: ", error);
-        throw error;
-    };
-};//

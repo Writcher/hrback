@@ -1,59 +1,69 @@
 "use server";
 
+import { executeQuery } from "@/lib/utils/database";
+
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getEstadosEmpleado(){
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM estadoempleado
-        `;
+export async function getEstadoEmpleadoBaja() {
+    return executeQuery(
+        'getEstadoEmpleadoBaja',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                    SELECT id FROM estadoempleado
+                    WHERE nombre = 'Baja'
+                `;
 
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getEstadosEmpleado: ", error);
-        throw error;
-    };
-};//
+            const getResult = await client.query(getQuery);
 
-export async function getEstadoEmpleadoBaja(){
-    try {  
-        const texto = `
-            SELECT
-            id
-            FROM estadoempleado
-            WHERE nombre = 'Baja'
-        `;
+            if (getResult.rows.length === 0) {
 
-        const resultado = await client.query(texto);
+                const insertQuery = `
+                        INSERT INTO estadoempleado (nombre)
+                        VALUES ($1)
+                        ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                        RETURNING id
+                    `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoEmpleadoBaja: ", error);
-        throw error;
-    };
+                const insertResult = await client.query(insertQuery, ['Baja']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
 };//
 
 export async function getEstadoEmpleadoActivo() {
-    try {
-        const texto = `
-            SELECT
-            id
-            FROM estadoempleado
-            WHERE nombre = 'Activo'
-        `;
+    return executeQuery(
+        'getEstadoEmpleadoActivo',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                    SELECT id FROM estadoempleado
+                    WHERE nombre = 'Activo'
+                `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoEmpleadoActivo: ", error);
-        throw error;
-    };
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                        INSERT INTO estadoempleado (nombre)
+                        VALUES ($1)
+                        ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                        RETURNING id
+                    `;
+
+                const insertResult = await client.query(insertQuery, ['Activo']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
 };//

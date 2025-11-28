@@ -1,127 +1,188 @@
 "use server";
 
 import { createControlParametros, deleteControlParametros, editControlParametros, getControlByProyectoParametros, getControlesParametros } from "@/lib/types/control";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
+import { createConflictError } from "@/lib/utils/error";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function getControlByProyecto(parametros: getControlByProyectoParametros) {
-    try {
-        const texto = `
-            SELECT c.serie
-            FROM control c
-            WHERE c.id_proyecto = $1
-        `;
+    return executeQuery(
+        'getControlByProyecto',
+        async () => {
 
-        const valores = [parametros.id_proyecto];
+            const getQuery = `
+                SELECT serie FROM control 
+                WHERE id_proyecto = $1
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.id_proyecto
+            ]);
 
-        return resultado.rows.map(control => control.serie);;
-    } catch (error) {
-        console.error("Error en getControlByProyecto: ", error);
-        throw error;
-    };
-};
+            return getResult.rows.map(control => control.serie);
+        },
+
+        parametros
+    );
+};//
 
 export async function getProyectosConHikVision() {
-    try {
-        const texto = `
-            SELECT DISTINCT c.id_proyecto
-            FROM control c
-        `;
+    return executeQuery(
+        'getProyectosConHikVision',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT DISTINCT id_proyecto
+                FROM control
+            `;
 
-        return resultado.rows.map(proyecto => proyecto.id_proyecto);
-    } catch (error) {
-        console.error("Error en getProyectosConHikVision: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows.map(proyecto => proyecto.id_proyecto);
+        }
+    );
+};//
 
 export async function deleteControl(parametros: deleteControlParametros) {
-    try {
-        const texto = `
-            DELETE FROM "control"
-            WHERE id = $1
-        `;
+    return executeQuery(
+        'deleteControl',
+        async () => {
 
-        const valores = [parametros.id_control];
+            const deleteQuery = `
+                DELETE FROM control
+                WHERE id = $1
+            `;
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en deleteControl: ", error);
-        throw error;
-    };
-};
+            const deleteResult = await client.query(deleteQuery, [
+                parametros.id_control
+            ]);
+
+            checkRowsAffected(deleteResult, 'Control', { id: parametros.id_control });
+        },
+
+        parametros
+    );
+};//
 
 export async function editControl(parametros: editControlParametros) {
-    try {
-        const texto = `
-            UPDATE "control"
-            SET serie = $1, id_proyecto = $2
-            WHERE id = $3
-        `;
-        const valores = [parametros.serie, parametros.id_proyecto, parametros.id_control];
+    return executeQuery(
+        'editControl',
+        async () => {
 
-        await client.query(texto, valores);
+            const checkQuery = `
+                SELECT id FROM control 
+                WHERE serie = $1 AND id_proyecto = $2 AND id != $3
+            `;
 
-        return;
-    } catch (error) {
-        console.error("Error en editControl: ", error);
-        throw error;
-    };
-};
+            const checkResult = await client.query(checkQuery, [
+                parametros.serie,
+                parametros.id_proyecto,
+                parametros.id_control
+            ]);
+
+            if (checkResult.rows.length > 0) {
+                throw createConflictError(
+                    'Control ya existe en proyecto',
+                    { serie: parametros.serie, id_proyecto: parametros.id_proyecto }
+                );
+            };
+
+            const updateQuery = `
+                UPDATE control
+                SET serie = $1, id_proyecto = $2
+                WHERE id = $3
+            `;
+
+            const updateResult = await client.query(updateQuery, [
+                parametros.serie,
+                parametros.id_proyecto,
+                parametros.id_control
+            ]);
+
+            checkRowsAffected(updateResult, 'Control', { id: parametros.id_control });
+        },
+
+        parametros
+    );
+};//
 
 export async function createControl(parametros: createControlParametros) {
-    try {
-        const texto = `
+    return executeQuery(
+        'createControl',
+        async () => {
+
+            const checkQuery = `
+                SELECT id FROM control
+                WHERE serie = $1 AND id_proyecto = $2
+            `;
+
+            const checkResult = await client.query(checkQuery, [
+                parametros.serie,
+                parametros.id_proyecto
+            ]);
+
+            if (checkResult.rows.length > 0) {
+                throw createConflictError(
+                    'Control ya existe',
+                    { serie: parametros.serie, id_proyecto: parametros.id_proyecto }
+                );
+            };
+
+            const insertQuery = `
                 INSERT INTO "control" (serie, id_proyecto)
                 VALUES ($1, $2)
             `;
 
-        const valores = [parametros.serie, parametros.id_proyecto];
+            const createResult = await client.query(insertQuery, [
+                parametros.serie,
+                parametros.id_proyecto
+            ]);
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en createControl: ", error);
-        throw error;
-    };
-};
+            checkRowsAffected(createResult, 'Control no creado');
+        },
+
+        parametros
+    );
+};//
 
 export async function getControles(parametros: getControlesParametros) {
-    try {
-        const offset = (parametros.pagina) * parametros.filasPorPagina;
+    return executeQuery(
+        'getControles',
+        async () => {
 
-        const texto = `
-            SELECT 
-                c.id,
-                c.serie,
-                c.id_proyecto,
-                p.nombre AS proyectonombre
-            FROM control c
-            JOIN proyecto p ON c.id_proyecto = p.id
-            LIMIT $1 OFFSET $2
-        `;
+            const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const valores = [parametros.filasPorPagina, offset];
+            const getQuery = `
+                SELECT 
+                    c.id,
+                    c.serie,
+                    c.id_proyecto,
+                    p.nombre AS proyectonombre
+                FROM control c
+                JOIN proyecto p ON c.id_proyecto = p.id
+                LIMIT $1 OFFSET $2
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const countQuery = `
+                SELECT COUNT(DISTINCT id) AS total
+                FROM "control"
+            `;
 
-        let textoConteo = `
-            SELECT COUNT(DISTINCT id) AS total
-            FROM "control"
-        `;
+            const getResult = await client.query(getQuery, [
+                parametros.filasPorPagina,
+                offset
+            ]);
 
-        const resultadoConteo = await client.query(textoConteo);
+            const countResult = await client.query(countQuery);
 
-        return {
-            controles: resultado.rows,
-            totalControles: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getControles: ", error);
-        throw error;
-    };
-};
+            return {
+                controles: getResult.rows,
+                totalControles: countResult.rows[0].total,
+            };
+        },
+
+        parametros
+    );
+};//

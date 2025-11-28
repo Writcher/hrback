@@ -1,72 +1,115 @@
 "use server";
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function getEstadosImportacion() {
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM estadoimportacion
-        `;
-        const resultado = await client.query(texto);
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getEstadosImportacion: ", error);
-        throw error;
-    };
-};
+    return executeQuery(
+        'getEstadosImportacion',
+        async () => {
+
+            const getQuery = `
+                SELECT * FROM estadoimportacion
+            `
+
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows;
+        }
+    );
+};//
 
 export async function getEstadoImportacionIncompleta() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadoimportacion
-            WHERE nombre = 'Incompleta'
-        `;
+    return executeQuery(
+        'getEstadoImportacionIncompleta',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM estadoimportacion
+                WHERE nombre = 'Incompleta'
+            `
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoImportacionIncompleta: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadoimportacion (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Incompleta']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getEstadoImportacionRevision() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadoimportacion
-            WHERE nombre = 'Revision'
-        `;
+    return executeQuery(
+        'getEstadoImportacionIncompleta',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM estadoimportacion
+                WHERE nombre = 'Revision'
+            `
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoImportacionRevision: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadoimportacion (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Revision']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getEstadoImportacionCompleta() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadoimportacion
-            WHERE nombre = 'Completa'
-        `;
+    return executeQuery(
+        'getEstadoImportacionIncompleta',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM estadoimportacion
+                WHERE nombre = 'Completa'
+            `
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoImportacionCompleta: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadoimportacion (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Completa']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//

@@ -1,41 +1,47 @@
 import { verifyAuthToken } from '@/lib/utils/authutils';
+import { handleApiError } from '@/lib/utils/error';
+import { validateData } from '@/lib/utils/validation';
 import { getImportaciones } from '@/services/importacion/service.importacion';
 import { NextRequest, NextResponse } from 'next/server';
 
+type getImportacionesURL = {
+    filtroIncompletas: boolean,
+    filtroProyecto: number,
+    pagina: number,
+    filasPorPagina: number,
+};
+
 export async function GET(request: NextRequest) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
-
     try {
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
+
         const url = new URL(request.url);
-        const filtroIncompletas = url.searchParams.get("filtroIncompletas") === "true";
-        const filtroProyecto = Number(url.searchParams.get("filtroProyecto"));
-        const pagina = Number(url.searchParams.get("pagina"));
-        const filasPorPagina = Number(url.searchParams.get("filasPorPagina"));
 
-        if (
-            isNaN(filtroProyecto) ||
-            isNaN(pagina) ||
-            isNaN(filasPorPagina)
-        ) {
-            return new Response(
-                JSON.stringify({ error: 'Faltan parametros' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+        const data = {
+            filtroIncompletas: url.searchParams.get("filtroIncompletas") === "true",
+            filtroProyecto: Number(url.searchParams.get("filtroProyecto")),
+            pagina: Number(url.searchParams.get("pagina")),
+            filasPorPagina: Number(url.searchParams.get("filasPorPagina")),
         };
 
-        const getImportacionesParametros = {
-            filtroIncompletas,
-            filtroProyecto,
-            pagina,
-            filasPorPagina
+        const validation = validateData<getImportacionesURL>(data, [
+            { field: 'pagina', required: true, type: 'number', min: 0 },
+            { field: 'filasPorPagina', required: true, type: 'number' },
+            { field: 'filtroProyecto', required: true, type: 'number' },
+            { field: 'filtroIncompletas', required: true, type: 'boolean' }
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
         };
 
-        const respuesta = await getImportaciones(getImportacionesParametros);
+        const respuesta = await getImportaciones({
+            ...validation.data
+        });
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando jornadas:", error);
-        return NextResponse.json({ error: "Error interno" }, { status: 500 });
+        return handleApiError(error, 'GET /api/importaciones');
     };
-};
+};//

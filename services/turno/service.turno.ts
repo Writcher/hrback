@@ -1,57 +1,84 @@
 "use server"
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getTurnos(){
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM turno
-        `;
-        
-        const resultado = await client.query(texto);
+export async function getTurnos() {
+    return executeQuery(
+        'getTurnos',
+        async () => {
 
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getTurnos: ", error);
-        throw error;
-    };
-};
+            const getQuery = `
+                SELECT * FROM turno
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows;
+        }
+    );
+};//
 
 export async function getTurnoNocturno() {
-    try {
-        const texto = `
-            SELECT id
-            FROM turno
-            WHERE nombre = 'Nocturno'
-        `;
+    return executeQuery(
+        'getTurnoNocturno',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM turno
+                WHERE nombre = 'Nocturno'
+            `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getTurnoNocturno: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO turno (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Nocturno']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getTurnoDiurno() {
-    try {
-        const texto = `
-            SELECT id
-            FROM turno
-            WHERE nombre = 'Diurno'
-        `;
+    return executeQuery(
+        'getTurnoDiurno',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM turno
+                WHERE nombre = 'Diurno'
+            `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getTurnoDiurno: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO turno (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Diurno']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//

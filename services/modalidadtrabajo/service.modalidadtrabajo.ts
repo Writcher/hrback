@@ -1,57 +1,85 @@
 "use server"
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function getModalidadTrabajoCorrido() {
-    try {
-        const texto = `
-            SELECT id
-            FROM modalidadtrabajo
-            WHERE nombre = 'Jornada Completa'
-        `;
+    return executeQuery(
+        'getModalidadTrabajoCorrido',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM modalidadtrabajo
+                WHERE nombre = 'Jornada Completa'
+            `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getModalidadTrabajoCorrido: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+                
+                const insertQuery = `
+                    INSERT INTO tipoausencia (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Jornada Completa']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getModalidadTrabajoPartido() {
-    try {
-        const texto = `
-            SELECT id
-            FROM modalidadtrabajo
-            WHERE nombre = 'Jornada Partida'
-        `;
+    return executeQuery(
+        'getModalidadTrabajoPartido',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT id FROM modalidadtrabajo
+                WHERE nombre = 'Jornada Partida'
+            `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getModalidadTrabajoPartido: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO tipoausencia (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Jornada Partida']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getModalidadesTrabajo(){
-    try {
-        const texto = `
-            SELECT 
-            id,
-            nombre 
-            FROM modalidadtrabajo
-        `;
+    return executeQuery(
+        'getModalidadesTrabajo',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT *
+                FROM modalidadtrabajo
+            `;
 
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getModalidadesTrabajo: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows
+        }
+    );
+};//

@@ -1,75 +1,89 @@
 import { verifyAuthToken } from '@/lib/utils/authutils';
+import { handleApiError } from '@/lib/utils/error';
+import { validateData } from '@/lib/utils/validation';
 import { getEmpleadoJornadas, getEmpleadoJornadasResumen } from '@/services/jornada/service.jornada';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: number }> }
-) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
+type getEmpleadoJornadasURL = {
+    filtroMes: number,
+    filtroQuincena: number,
+    filtroTipoAusencia: number,
+    filtroMarcasIncompletas: boolean,
+    ausencias: boolean,
+};
 
+type paginacionData = {
+    pagina: number,
+    filasPorPagina: number,
+};
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
     try {
-        const { id: id_empleado } = await params;
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
 
         const url = new URL(request.url);
-        const filtroMes = Number(url.searchParams.get("filtroMes"));
-        const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
-        const filtroMarcasIncompletas = url.searchParams.get("filtroMarcasIncompletas") === "true";
-        const ausencias = url.searchParams.get("ausencias") === "true";
-        const filtroTipoAusencia = Number(url.searchParams.get("filtroTipoAusencia"));
-        
-        const paginaParam = url.searchParams.get("pagina");
-        const filasParam = url.searchParams.get("filasPorPagina");
-        
-        if (isNaN(filtroMes) || isNaN(filtroQuincena)) {
-            return new Response(
-                JSON.stringify({ error: 'Faltan parametros' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+        const { id: id_empleado } = await params;
+
+        const data = {
+            filtroMes: Number(url.searchParams.get("filtroMes")),
+            filtroQuincena: Number(url.searchParams.get("filtroQuincena")),
+            filtroTipoAusencia: Number(url.searchParams.get("filtroTipoAusencia")),
+            filtroMarcasIncompletas: url.searchParams.get("filtroMarcasIncompletas") === "true",
+            ausencias: url.searchParams.get("ausencias") === "true",
+
+        };
+
+        const pagina = url.searchParams.get("pagina");
+        const filasPorPagina = url.searchParams.get("filasPorPagina");
+
+        const validation = validateData<getEmpleadoJornadasURL>(data, [
+            { field: 'filtroMes', required: true, type: 'number' },
+            { field: 'filtroQuincena', required: true, type: 'number' },
+            { field: 'filtroTipoAusencia', required: true, type: 'number' },
+            { field: 'filtroMarcasIncompletas', required: true, type: 'boolean' },
+            { field: 'ausencias', required: true, type: 'boolean' },
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
         };
 
         let respuesta;
-        
-        if (paginaParam && paginaParam !== '' && filasParam && filasParam !== '') {
 
-            const pagina = Number(paginaParam);
-            
-            const filasPorPagina = Number(filasParam);
-            
-            if (isNaN(pagina) || isNaN(filasPorPagina) || isNaN(filtroTipoAusencia)) {
-                return new Response(
-                    JSON.stringify({ error: 'Parámetros de paginación inválidos' }),
-                    { status: 400, headers: { 'Content-Type': 'application/json' } }
-                );
+        if (pagina !== '' && filasPorPagina !== '') {
+
+            const dataPaginacion = {
+                pagina: Number(pagina),
+                filasPorPagina: Number(filasPorPagina),
             };
 
-            const getEmpleadoJornadasParametros = {
-                id_empleado: Number(id_empleado),
-                filtroMes,
-                filtroQuincena,
-                filtroMarcasIncompletas,
-                pagina,
-                filasPorPagina,
-                ausencias,
-                filtroTipoAusencia,
+            const validationPaginacion = validateData<paginacionData>(dataPaginacion, [
+                { field: 'pagina', required: true, type: 'number' },
+                { field: 'filasPorPagina', required: true, type: 'number' },
+            ]);
+
+            if (!validationPaginacion.valid) {
+                throw validationPaginacion.error;
             };
 
-            respuesta = await getEmpleadoJornadas(getEmpleadoJornadasParametros);
+            respuesta = await getEmpleadoJornadas({
+                ...validation.data,
+                ...validationPaginacion.data,
+                id_empleado: Number(id_empleado)
+            });
         } else {
 
-            const getEmpleadoJornadasResumenParametros = {
+            respuesta = await getEmpleadoJornadasResumen({
                 id_empleado: Number(id_empleado),
-                filtroMes,
-                filtroQuincena
-            };
+                filtroMes: validation.data.filtroMes,
+                filtroQuincena: validation.data.filtroQuincena
+            });
 
-            respuesta = await getEmpleadoJornadasResumen(getEmpleadoJornadasResumenParametros);
         };
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando jornadas:", error);
-        return NextResponse.json({ error: "Error interno" }, { status: 500 });
+        return handleApiError(error, 'GET /api/empleado/[id]/jornadas');
     };
-};
+};//

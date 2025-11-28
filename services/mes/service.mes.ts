@@ -1,64 +1,63 @@
 "use server";
 
 import { db } from "@vercel/postgres";
-import { getMesByMesParametros, insertMesParametros } from "@/lib/types/mes";
+import { getMesByMesParametros } from "@/lib/types/mes";
+import { executeQuery } from "@/lib/utils/database";
 
 const client = db;
 
-export async function getMeses(){
-    try {
-        const texto = `
-            SELECT 
-            id,
-            mes, 
-            id_año
-            FROM mes
-            ORDER BY mes, id_año
-        `;
+export async function getMeses() {
+    return executeQuery(
+        'getMeses',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                SELECT * FROM mes
+                ORDER BY mes, id_año
+            `;
 
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getMeses: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows;
+        }
+    );
+};//
 
 export async function getMesByMes(parametros: getMesByMesParametros) {
-    try {
-        const texto = `
-            SELECT id
-            FROM mes
-            WHERE mes = $1 AND id_año = $2
-        `;
+    return executeQuery(
+        'getMesByMes',
+        async () => {
 
-        const valores = [parametros.mes, parametros.id_año];
+            const getQuery = `
+                SELECT id FROM mes
+                WHERE mes = $1 AND id_año = $2
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.mes,
+                parametros.id_año
+            ]);
 
-        return resultado;
-    } catch (error) {
-        console.error("Error en getMesByMes: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
 
-export async function insertMes(parametros: insertMesParametros) {
-    try {
-        const texto = `
-            INSERT INTO mes (mes, id_año)
-            VALUES ($1, $2)
-            RETURNING id
-        `;
+                const insertQuery = `
+                    INSERT INTO mes (mes, id_año)
+                    VALUES ($1, $2)
+                    RETURNING id
+                `;
 
-        const valores = [parametros.mes, parametros.id_año];
+                const insertResult = await client.query(insertQuery, [
+                    parametros.mes,
+                    parametros.id_año
+                ]);
 
-        const resultado = await client.query(texto, valores);
+                return insertResult.rows[0].id
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertMes: ", error);
-        throw error;
-    };
-};
+            };
+
+            return getResult.rows[0].id;
+        },
+
+        parametros
+    );
+};//

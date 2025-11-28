@@ -1,46 +1,49 @@
 import { verifyAuthToken } from '@/lib/utils/authutils';
+import { validateData } from '@/lib/utils/validation';
+import { handleApiError } from "@/lib/utils/error";
 import { getObservacionesResumen } from '@/services/observacion/service.observacion';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: number }> }
-) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
+type getEmpleadoJornadaObservacionesURL = {
+    filtroMes: number,
+    filtroQuincena: number,
+    pagina: number,
+    filasPorPagina: number,
+};
 
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
     try {
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
+
         const { id: id_empleado } = await params;
-
         const url = new URL(request.url);
-        const filtroMes = Number(url.searchParams.get("filtroMes"));
-        const filtroQuincena = Number(url.searchParams.get("filtroQuincena"));
-        const paginaParam = url.searchParams.get("pagina");
-        const filasParam = url.searchParams.get("filasPorPagina");
 
-        const pagina = Number(paginaParam);
-        const filasPorPagina = Number(filasParam);
-
-        if (isNaN(filtroMes) || isNaN(filtroQuincena) || isNaN(pagina) || isNaN(filasPorPagina)) {
-            return new Response(
-                JSON.stringify({ error: 'Faltan parametros' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+        const data = {
+            filtroMes: Number(url.searchParams.get("filtroMes")),
+            filtroQuincena: Number(url.searchParams.get("filtroQuincena")),
+            pagina: Number(url.searchParams.get("pagina")),
+            filasPorPagina: Number(url.searchParams.get("filasPorPagina")),
         };
 
-            const getEmpleadoJornadasParametros = {
-                id_empleado: Number(id_empleado),
-                filtroMes,
-                filtroQuincena,
-                pagina,
-                filasPorPagina
-            };
+        const validation = await validateData<getEmpleadoJornadaObservacionesURL>(data, [
+            { field: 'filtroMes', required: true, type: 'number' },
+            { field: 'filtroQuincena', required: true, type: 'number' },
+            { field: 'pagina', required: true, type: 'number', min: 0 },
+            { field: 'filasPorPagina', required: true, type: 'number' }
+        ]);
 
-            const respuesta = await getObservacionesResumen(getEmpleadoJornadasParametros);
+        if (!validation.valid) {
+            throw validation.error;
+        };
+
+        const respuesta = await getObservacionesResumen({
+            ...validation.data,
+            id_empleado: Number(id_empleado),
+        });
 
         return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando jornadas:", error);
-        return NextResponse.json({ error: "Error interno" }, { status: 500 });
+        return handleApiError(error, 'GET /api/empleado/[id]/observaciones');
     };
 };

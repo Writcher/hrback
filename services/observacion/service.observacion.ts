@@ -1,87 +1,102 @@
 "use server"
 
 import { getObservacionesResumenParametros, insertObservacionParametros } from "@/lib/types/observacion";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function insertObservacion(parametros: insertObservacionParametros) {
-    try {
-        const texto = `
-            INSERT INTO "observacion" (texto)
-            VALUES ($1)
-            RETURNING id
-        `;
-        const valores = [parametros.observacion];
+    return executeQuery(
+        'insertObservacion',
+        async () => {
 
-        const observacion = await client.query(texto, valores);
+            const insertQuery = `
+                INSERT INTO observacion (texto)
+                VALUES ($1)
+                RETURNING id
+            `;
 
-        return observacion.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertObservacion: ", error);
-        throw error;
-    };
-};
+            const insertResult = await client.query(insertQuery, [
+                parametros.observacion
+            ]);
+
+            checkRowsAffected(insertResult, 'Observacion no creada')
+
+            return insertResult.rows[0].id;
+        },
+
+        parametros
+    );
+};//
 
 export async function getObservacionesResumen(parametros: getObservacionesResumenParametros) {
-    try {
-        const valoresBase: any = [parametros.id_empleado];
+    return executeQuery(
+        'getObservacionesResumen',
+        async () => {
 
-        const offset = (parametros.pagina) * parametros.filasPorPagina;
+            const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        let textoJoin = `
-            JOIN jornadaobservacion jo ON jo.id_observacion = o.id
-            JOIN jornada j ON jo.id_jornada = j.id
-        `;
+            const valoresBase: any = [parametros.id_empleado];
 
-        let textoFiltroBase = `
-            WHERE j.id_empleado = $1 
-            AND o.texto != 'Entrada Manual'
-        `;
+            let join = `
+                JOIN jornadaobservacion jo ON jo.id_observacion = o.id
+                JOIN jornada j ON jo.id_jornada = j.id
+            `;
 
-        if (parametros.filtroMes !== 0) {
-            textoFiltroBase += `AND j.id_mes = $${valoresBase.length + 1} `;
-            valoresBase.push(parametros.filtroMes);
-        };
+            let filtro = `
+                WHERE j.id_empleado = $1 
+            `;
 
-        if (parametros.filtroQuincena !== 0) {
-            const quincenaParamIndex = valoresBase.length + 1;
-            textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
-            textoFiltroBase += `AND q.quincena = $${quincenaParamIndex} `;
-            valoresBase.push(parametros.filtroQuincena);
-        };
+            if (parametros.filtroMes !== 0) {
+                filtro += `
+                    AND j.id_mes = $${valoresBase.length + 1}`;
+                valoresBase.push(parametros.filtroMes);
+            };
 
-        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
-        const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
+            if (parametros.filtroQuincena !== 0) {
+                join += `
+                    JOIN "quincena" q ON j.id_quincena = q.id`;
+                filtro += `
+                    AND q.quincena = $${valoresBase.length + 1}`;
+                valoresBase.push(parametros.filtroQuincena);
+            };
 
-        const texto = `
-            SELECT 
-                o.id,
-                o.texto,
-                j.fecha
-            FROM observacion o
-            ${textoJoin}
-            ${textoFiltroBase}
-            ${textoLimite}
-        `;
+            const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
 
-        const resultado = await client.query(texto, valoresPrincipal);
+            const limite = `
+                LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}
+            `;
 
-        const textoConteo = `
-            SELECT COUNT(*) AS total
-            FROM observacion o
-            ${textoJoin}
-            ${textoFiltroBase}
-        `;
+            const getQuery = `
+                SELECT
+                    o.id,
+                    o.texto,
+                    j.fecha
+                FROM observacion o
+                ${join}
+                ${filtro}
+                ${limite}
+            `;
 
-        const resultadoConteo = await client.query(textoConteo, valoresBase);
+            const countQuery = `
+                SELECT COUNT(*) AS total
+                FROM observacion o
+                ${join}
+                ${filtro}
+            `;
 
-        return {
-            observaciones: resultado.rows,
-            totalObservaciones: resultadoConteo.rows[0].total
-        };
-    } catch (error) {
-        console.error("Error en getObservacionesResumen: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery, valoresPrincipal);
+
+            const countResult = await client.query(countQuery, valoresBase);
+
+            return {
+                observaciones: getResult.rows,
+                totalObservaciones: countResult.rows[0].total
+            };
+
+        },
+
+        parametros
+    );
+};//

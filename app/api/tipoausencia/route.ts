@@ -1,19 +1,30 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
+import { handleApiError } from "@/lib/utils/error";
+import { validateData } from "@/lib/utils/validation";
 import { createTipoAusencia } from "@/services/tipoausencia/service.tipoausencia";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
-
     try {
-        const parametros = await request.json();
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
 
-        await createTipoAusencia(parametros);
+        const body = await request.json();
+
+        const validation = validateData<{ nombre: string }>(body, [
+            { field: 'nombre', required: true, type: 'string' }
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
+        };
+
+        await createTipoAusencia({
+            ...validation.data
+        });
 
         return NextResponse.json({ message: "Tipo de Ausencia creado." }, { status: 201 });
     } catch (error) {
-        console.error("Error creando Tipo de Ausencia:", error);
-        return NextResponse.json({ error: "Error creando Tipo de Ausencia" }, { status: 500 });
+        return handleApiError(error, 'POST /api/tipoausencia');
     };
-};
+};//

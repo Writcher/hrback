@@ -1,39 +1,52 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
+import { handleApiError } from "@/lib/utils/error";
+import { validateData } from "@/lib/utils/validation";
 import { deactivateTipoAusencia, editTipoAusencia } from "@/services/tipoausencia/service.tipoausencia";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
-
     try {
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
+
         const { id: id_tipoausencia } = await params;
-        const parametros = await request.json();
+        const body = await request.json();
 
-        if (parametros.accion === "baja") {
-            
-            const deactivateTipoAusenciaParametros = {
-                id_tipoausencia: id_tipoausencia
-            };
+        const validation = validateData<{ accion: string }>(body, [
+            { field: 'accion', required: true, type: 'string' }
+        ]);
 
-            await deactivateTipoAusencia(deactivateTipoAusenciaParametros);
-
-            return NextResponse.json({ message: "Tipo de Ausencia dado de baja correctamente." }, { status: 200 });
+        if (!validation.valid) {
+            throw validation.error;
         };
 
-        if (parametros.accion === "editar") {
+        if (validation.data.accion === "baja") {
 
-            const editTipoAusenciaParametros = {
-                id_tipoausencia: id_tipoausencia,
-                nombre: parametros.nombre as string,
+            await deactivateTipoAusencia({
+                id_tipoausencia: id_tipoausencia
+            });
+
+            return NextResponse.json({ message: "Tipo de Ausencia dado de baja correctamente." }, { status: 200 });
+        } else if (validation.data.accion === "editar") {
+
+            const editValidation = validateData<{ nombre: string }>({
+                nombre: body.nombre as string
+            }, [
+                { field: 'nombre', required: true, type: 'string' }
+            ]);
+
+            if (!editValidation.valid) {
+                throw editValidation.error;
             };
 
-            await editTipoAusencia(editTipoAusenciaParametros);
+            await editTipoAusencia({
+                id_tipoausencia: id_tipoausencia,
+                nombre: editValidation.data.nombre,
+            });
 
             return NextResponse.json({ message: "Tipo de Ausencia editado correctamente." }, { status: 200 });
         };
     } catch (error) {
-        console.error("Error editando Tipo de Ausencia: ", error);
-        return NextResponse.json({ error: "Error interno" })
+        return handleApiError(error, 'PATCH /api/tipoausencia/[id]');
     };
-};
+};//

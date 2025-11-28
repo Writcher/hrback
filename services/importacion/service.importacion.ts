@@ -3,127 +3,147 @@
 import { deleteImportacionParametros, getImportacionesParametros, insertImportacionParametros, setImportacionCompletaParametros } from "@/lib/types/importacion";
 import { db } from "@vercel/postgres";
 import { getEstadoImportacionCompleta } from "../estadoimportacion/service.estadoimportacion";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
 
 const client = db;
 
 export async function getImportaciones(parametros: getImportacionesParametros) {
-    try {
+    return executeQuery(
+        'getImportaciones',
+        async () => {
 
-        const importacion_completa = await getEstadoImportacionCompleta();
+            const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const offset = (parametros.pagina) * parametros.filasPorPagina;
+            const id_estadoimportacion = await getEstadoImportacionCompleta();
 
-        const valoresBase: any = [];
+            const valoresBase: any = [];
 
-        let textoFiltroBase = 'WHERE 1=1';
-
-        if (parametros.filtroIncompletas) {
-            textoFiltroBase += `
-                AND id_estadoimportacion != $${valoresBase.length + 1}::int
-            `;
-            valoresBase.push(importacion_completa);
-        };
-
-        if (parametros.filtroProyecto !== 0) {
-
-            textoFiltroBase += `
-                AND id_proyecto = $${valoresBase.length + 1}::int
+            let filtro = `
+                WHERE 1=1
             `;
 
-            valoresBase.push(parametros.filtroProyecto);
-        };
+            if (parametros.filtroIncompletas) {
+                filtro += `
+                    AND id_estadoimportacion != $${valoresBase.length + 1}::int`;
+                valoresBase.push(id_estadoimportacion);
+            };
 
-        const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
-        const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
+            if (parametros.filtroProyecto !== 0) {
+                filtro += `
+                    AND id_proyecto = $${valoresBase.length + 1}::int`;
+                valoresBase.push(parametros.filtroProyecto);
+            };
 
-        const texto = `
-            SELECT
-                i.id,
-                i.fecha,
-                i.nombrearchivo AS nombre,
-                e.nombre AS nombreestado,
-                u.nombre AS nombreusuario,
-                p.nombre AS nombreproyecto
-            FROM "importacion" i
-            JOIN "estadoimportacion" e ON i.id_estadoimportacion = e.id
-            JOIN "usuario" u ON i.id_usuariocreacion = u.id
-            JOIN "proyecto" p ON i.id_proyecto = p.id
-            ${textoFiltroBase}
-            ${textoLimite}
-        `;
+            const valoresPrincipal = [...valoresBase, parametros.filasPorPagina, offset];
+            const limite = `
+                LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
 
-        const resultado = await client.query(texto, valoresPrincipal);
+            const getQuery = `
+                SELECT
+                    i.id,
+                    i.fecha,
+                    i.nombrearchivo AS nombre,
+                    e.nombre AS nombreestado,
+                    u.nombre AS nombreusuario,
+                    p.nombre AS nombreproyecto
+                FROM importacion i
+                JOIN estadoimportacion e ON i.id_estadoimportacion = e.id
+                JOIN usuario u ON i.id_usuariocreacion = u.id
+                JOIN proyecto p ON i.id_proyecto = p.id
+                ${filtro}
+                ${limite}
+            `;
 
-        const textoConteo = `
-            SELECT COUNT(*) AS total
-            FROM "importacion"
-            ${textoFiltroBase}
-        `;
+            const countQuery = `
+                SELECT COUNT(*) AS total
+                FROM importacion
+                ${filtro}
+            `;
 
-        const resultadoConteo = await client.query(textoConteo, valoresBase);
+            const getResult = await client.query(getQuery, valoresPrincipal);
 
-        return {
-            importaciones: resultado.rows,
-            totalImportaciones: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getImportaciones: ", error);
-        throw error;
-    };
+            const countResult = await client.query(countQuery, valoresBase);
+
+            return {
+                importaciones: getResult.rows,
+                totalImportaciones: countResult.rows[0].total
+            };
+        },
+
+        parametros
+    );
 };//
 
 export async function setImportacionCompleta(parametros: setImportacionCompletaParametros) {
-    try {
-        const importacion_completa = await getEstadoImportacionCompleta();
+    return executeQuery(
+        'setImportacionCompleta',
+        async () => {
 
-        const texto = `
-            UPDATE importacion
-            SET id_estadoimportacion = $1
-            WHERE id = $2
-        `;
+            const id_estadoimportacion = await getEstadoImportacionCompleta();
 
-        const valores = [importacion_completa, parametros.id];
+            const updateQuery = `
+                UPDATE importacion
+                SET id_estadoimportacion = $1
+                WHERE id = $2
+            `;
 
-        await client.query(texto, valores);
+            const updateResult = await client.query(updateQuery, [
+                id_estadoimportacion, 
+                parametros.id
+            ]);
 
-        return;
-    } catch (error) {
-        console.error("Error en setImportacionCompleta: ", error);
-        throw error;
-    };
+            checkRowsAffected(updateResult, 'Importacion', { id: parametros.id });
+        },
+
+        parametros
+    );
 };//
 
 export async function deleteImportacion(parametros: deleteImportacionParametros) {
-    try {
-        const texto = `
-            DELETE FROM "importacion"
-            WHERE id = $1
-        `;
+    return executeQuery(
+        'deleteImportacion',
+        async () => {
 
-        const valores = [parametros.id];
+            const deleteQuery = `
+                DELETE FROM importacion
+                WHERE id = $1
+            `;
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en deleteImportacion: ", error);
-        throw error;
-    };
+            const deleteResult = await client.query(deleteQuery, [
+                parametros.id
+            ]);
+
+            checkRowsAffected(deleteResult, 'Importacion', { id: parametros.id });
+        },
+
+        parametros
+    );
 };//
 
 export async function insertImportacion(parametros: insertImportacionParametros) {
-    try {
-        const texto = `
-            INSERT INTO "importacion" (id_estadoimportacion, id_proyecto, nombrearchivo, id_tipoimportacion, id_usuariocreacion)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-        `;
+    return executeQuery(
+        'insertImportacion',
+        async () => {
 
-        const valores = [parametros.id_estadoimportacion, parametros.id_proyecto, parametros.nombreArchivo, parametros.id_tipoimportacion, parametros.id_usuariocreacion];
+            const insertQuery = `
+                INSERT INTO importacion (id_estadoimportacion, id_proyecto, nombrearchivo, id_tipoimportacion, id_usuariocreacion)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            `;
 
-        const respuesta = await client.query(texto, valores);
+            const insertResult = await client.query(insertQuery, [
+                parametros.id_estadoimportacion, 
+                parametros.id_proyecto, 
+                parametros.nombreArchivo, 
+                parametros.id_tipoimportacion, 
+                parametros.id_usuariocreacion
+            ]);
 
-        return respuesta.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertImportacion: ", error);
-        throw error;
-    };
+            checkRowsAffected(insertResult, 'Importacion');
+
+            return insertResult.rows[0].id;
+        },
+
+        parametros
+    );
 };//

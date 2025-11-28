@@ -1,86 +1,108 @@
+import { createValidationError, handleApiError } from "@/lib/utils/error";
+import { validateData } from "@/lib/utils/validation";
 import { getUsuarioPorCorreo, getUsuarios } from "@/services/usuario/service.usuario";
 import { NextRequest, NextResponse } from "next/server";
+
+type getusuariosURL = {
+    accion: string,
+};
+
+type loginData = {
+    correo: string,
+};
+
+type listaData = {
+    filtroTipoUsuario: number,
+    busquedaNombre: string,
+    direccionParam: string,
+    columnaParam: string,
+    paginaParam: number,
+    filasParam: number,
+};
 
 export async function GET(request: NextRequest) {
     try {
         const url = new URL(request.url);
 
-        const correo = url.searchParams.get("correo");
-
-        const filtroTipoUsuario = Number(url.searchParams.get("filtroTipoUsuario"));
-        const busquedaNombre = url.searchParams.get("busquedaNombre");
-        const direccionParam = url.searchParams.get("direccion")
-        const columnaParam = url.searchParams.get("columna")
-        const paginaParam = Number(url.searchParams.get("pagina"));
-        const filasParam = Number(url.searchParams.get("filasPorPagina"));
-
-        const accion = url.searchParams.get("accion");
-
-        if (
-            accion === null
-        ) {
-            return new Response(
-                JSON.stringify({ error: 'Faltan parametros' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+        const data = {
+            accion: url.searchParams.get("accion"),
         };
 
-        let respuesta;
+        const validation = await validateData<getusuariosURL>(data, [
+            { field: 'accion', required: true, type: 'string' },
+        ]);
 
-        if (accion === "login") {
+        if (!validation.valid) {
+            throw validation.error;
+        };
 
-            if (
-                correo === null
-            ) {
-                return new Response(
-                    JSON.stringify({ error: 'Faltan parametros' }),
-                    { status: 400, headers: { 'Content-Type': 'application/json' } }
-                );
+        if (validation.data.accion === 'login') {
+
+            const loginValidation = validateData<loginData>({
+                correo: url.searchParams.get("correo"),
+            }, [
+                { field: 'correo', required: true, type: 'string' }
+            ]);
+
+            if (!loginValidation.valid) {
+                throw loginValidation.error;
             };
 
-            const getUsuarioParametros = {
-                correo
-            };
-
-            const usuario = await getUsuarioPorCorreo(getUsuarioParametros);
+            const usuario = await getUsuarioPorCorreo({
+                correo: loginValidation.data.correo
+            });
 
             if (!usuario) {
                 return NextResponse.json({ error: "Usuario no existe" }, { status: 404 });
             } else {
-                respuesta = await getUsuarioPorCorreo(getUsuarioParametros);
+                return NextResponse.json(usuario, { status: 200 });
+            };
+        } else if (validation.data.accion === 'lista') {
+
+            const listaValidation = validateData<listaData>({
+                filtroTipoUsuario: Number(url.searchParams.get("filtroTipoUsuario")),
+                busquedaNombre: url.searchParams.get("busquedaNombre"),
+                direccionParam: url.searchParams.get("direccion"),
+                columnaParam: url.searchParams.get("columna"),
+                paginaParam: Number(url.searchParams.get("pagina")),
+                filasParam: Number(url.searchParams.get("filasPorPagina")),
+            }, [
+                { field: 'filtroTipoUsuario', required: false, type: 'number' },
+                { field: 'busquedaNombre', required: false, type: 'string' },
+                { field: 'direccionParam', required: true, type: 'string' },
+                { field: 'columnaParam', required: true, type: 'string' },
+                { field: 'paginaParam', required: true, type: 'number' },
+                { field: 'filasParam', required: true, type: 'number' },
+            ]);
+
+            if (!listaValidation.valid) {
+                throw listaValidation.error;
             };
 
-        } else if (accion === "lista") {
+            const columnasValidas = ['nombre', 'correo', 'id_tipousuario', 'id_estadousuario'];
 
-            if (
-                busquedaNombre === null ||
-                columnaParam === null ||
-                direccionParam === null ||
-                isNaN(paginaParam) ||
-                isNaN(filasParam) ||
-                isNaN(filtroTipoUsuario)
-            ) {
-                return new Response(
-                    JSON.stringify({ error: 'Faltan parametros' }),
-                    { status: 400, headers: { 'Content-Type': 'application/json' } }
-                );
+            if (!columnasValidas.includes(listaValidation.data.columnaParam.toLowerCase())) {
+                throw createValidationError(`${listaValidation.data.columnaParam} is not a valid column`, 'ordenColumna');
             };
 
-            const getUsuariosParametros = {
-                busquedaNombre,
-                filtroTipoUsuario,
-                pagina: paginaParam,
-                filas: filasParam,
-                columna: columnaParam,
-                direccion: direccionParam,
+            const direccionesValidas = ['ASC', 'DESC'];
+
+            if (!direccionesValidas.includes(listaValidation.data.direccionParam.toUpperCase())) {
+                throw createValidationError(`${listaValidation.data.direccionParam} is not a valid direction`, 'ordenDireccion');
             };
 
-            respuesta = await getUsuarios(getUsuariosParametros);
+            const respuesta = await getUsuarios({
+                busquedaNombre: listaValidation.data.busquedaNombre,
+                filtroTipoUsuario: listaValidation.data.filtroTipoUsuario,
+                pagina: listaValidation.data.paginaParam,
+                filas: listaValidation.data.filasParam,
+                columna: listaValidation.data.columnaParam,
+                direccion: listaValidation.data.direccionParam,
+            });
+
+            return NextResponse.json(respuesta, { status: 200 });
         };
-
-        return NextResponse.json(respuesta, { status: 200 });
     } catch (error) {
-        console.error("Error buscando usuario:", error);
-        return NextResponse.json({ error: "Error interno" }, { status: 500 });
+        return handleApiError(error, 'GET /api/usuarios');
     };
-};
+};//

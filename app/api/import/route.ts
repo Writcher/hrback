@@ -1,102 +1,122 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJornadas, processExcel } from "@/services/excel/service.excel";
 import { verifyAuthToken } from "@/lib/utils/authutils";
-import { getMarcasSQLServer, procesarMarcasEmpleados } from "@/services/sqlserver/service.sqlserver";
+import { getAusentesProyecto, getMarcasSQLServer, procesarMarcasEmpleados } from "@/services/sqlserver/service.sqlserver";
 import { getControlByProyecto, getProyectosConHikVision } from "@/services/control/service.control";
-import { getAusentes } from "@/services/empleado/service.empleado";
 import { createAbsences } from "@/services/jornada/service.jornada";
+import { validateData } from "@/lib/utils/validation";
+import { createConflictError, handleApiError } from "@/lib/utils/error";
 
-export async function POST(req: NextRequest) {
-  let payload;
+type importFormData = {
+  id_proyecto: number,
+  id_tipoimportacion: number,
+  id_tipojornada: number
+}
 
-  const cronSecret = req.headers.get('x-cron-secret');
-
-  if (cronSecret === process.env.CRON_SECRET) {
-    payload = { id: 9 };
-  } else {
-    const result = await verifyAuthToken(req);
-
-    if (result.error) return result.error;
-
-    payload = result.payload;
-  };
-
+export async function POST(request: NextRequest) {
   try {
-    const formData = await req.formData();
+    const { error, payload } = await verifyAuthToken(request);
+    if (error) return error;
 
     const id_usuariocreacion = payload.id;
+    const formData = await request.formData();
 
-    const id_proyecto = Number(formData.get("id_proyecto"));
-    const id_tipojornada = Number(formData.get("id_tipojornada"));
-    const file = formData.get("file") as File | null;
-    const id_tipoimportacion = Number(formData.get("id_tipoimportacion"));
-    const fecha = formData.get("fecha") as string;
-
-    const fechaConvertida = fecha.split('-').reverse().join('-');
-
-    if (
-      id_tipoimportacion == null || isNaN(id_tipoimportacion)
-    ) {
-      return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+    const data = {
+      id_proyecto: Number(formData.get('id_proyecto')),
+      id_tipojornada: Number(formData.get('id_tipojornada')),
+      id_tipoimportacion: Number(formData.get('id_tipoimportacion'))
     };
 
-    if (
-      !id_proyecto || isNaN(id_proyecto) ||
-      !id_tipojornada || isNaN(id_tipojornada)
-    ) {
-      return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
-    };
+    const validation = validateData<importFormData>(data, [
+      { field: 'id_proyecto', required: true, type: 'number' },
+      { field: 'id_tipojornada', required: true, type: 'number' },
+      { field: 'id_tipoimportacion', required: true, type: 'number' }
+    ]);
 
-    if (id_tipoimportacion === 1 && (!file || !(file instanceof File))) {
-      return NextResponse.json({ error: "No se subió ningún archivo" }, { status: 400 });
-    };
-
-    if (id_tipoimportacion === 2 && (!fecha || typeof fecha !== 'string')) {
-      return NextResponse.json({ error: "Falta el parámetro fecha" }, { status: 400 });
+    if (!validation.valid) {
+      throw validation.error;
     };
 
     const proyectosSoportados = await getProyectosConHikVision();
 
-    if (id_tipoimportacion === 2 && !proyectosSoportados.includes(id_proyecto)) {
-      return NextResponse.json({ error: "Proyecto no disponible con HikVision" }, { status: 400 });
+    if (validation.data.id_tipoimportacion === 2 && !proyectosSoportados.includes(validation.data.id_proyecto)) {
+      throw createConflictError(
+        'Proyecto no cuenta con controles HikVision',
+        { id_proyecto: validation.data.id_proyecto }
+      );
+    };
+
+    let file = null as File | null;
+
+    if (validation.data.id_tipoimportacion === 1) {
+      const validationProsoft = validateData<{ file: File | null }>({
+        file: formData.get('file') as File | null
+      }, [
+        {
+          field: 'file', required: true, type: 'file', allowedMimeTypes: [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel'
+          ]
+        }
+      ]);
+
+      if (!validationProsoft.valid) {
+        throw validationProsoft.error;
+      };
+
+      file = validationProsoft.data.file;
+    };
+
+    let fecha = '';
+    let fechaConvertida = '';
+
+    if (validation.data.id_tipoimportacion === 2) {
+
+      const validationHik = validateData<{ fecha: string }>({
+        fecha: formData.get('fecha')
+      }, [
+        { field: 'fecha', required: true, type: 'string' }
+      ]);
+
+      if (!validationHik.valid) {
+        throw validationHik.error;
+      };
+
+      fecha = validationHik.data.fecha;
+      fechaConvertida = fecha.split('-').reverse().join('-');
     };
 
     const importadores: Record<number, (file: File | null) => Promise<any>> = {
       1: async (file) => {
         const buffer = await file!.arrayBuffer();
 
-        const processExcelParametros = {
+        return processExcel({
           buffer: buffer,
-          id_proyecto: id_proyecto,
-          id_usuariocreacion: id_usuariocreacion,
-        };
-
-        return processExcel(processExcelParametros);
+          id_proyecto: validation.data.id_proyecto,
+        });
       },
       2: async () => {
-        const dispositivos = await getControlByProyecto({ id_proyecto });
+        const dispositivos = await getControlByProyecto({ id_proyecto: validation.data.id_proyecto });
 
-        const getMarcasSQLServerParametros = {
+        const resultado = await getMarcasSQLServer({
           dispositivos,
           fecha: fechaConvertida,
-        };
+        });
 
-        const resultado = await getMarcasSQLServer(getMarcasSQLServerParametros);
-
-        const procesarMarcasEmpleadosParametros = {
+        return procesarMarcasEmpleados({
           registros: resultado,
-          id_proyecto: id_proyecto,
-          id_usuariocreacion: id_usuariocreacion,
-        };
-
-        return procesarMarcasEmpleados(procesarMarcasEmpleadosParametros);
+          id_proyecto: validation.data.id_proyecto
+        });
       },
     };
 
-    const importador = importadores[id_tipoimportacion];
+    const importador = importadores[validation.data.id_tipoimportacion];
 
     if (!importador) {
-      return NextResponse.json({ error: "Tipo de importación no soportado" }, { status: 400 });
+      throw createConflictError(
+        'Tipo de importacion no soportado',
+        { id_tipoimportacion: validation.data.id_tipoimportacion }
+      );
     };
 
     /**
@@ -125,60 +145,33 @@ export async function POST(req: NextRequest) {
 
     const empleadosMapa = await importador(file);
 
-    const insertJornadaParametros = {
+    const importacion = await createJornadas({
+      ...validation.data,
       empleadosJornadas: empleadosMapa,
-      id_proyecto,
-      id_tipojornada,
-      nombreArchivo: file?.name || `SQLServer-${fecha}`,
-      id_tipoimportacion: id_tipoimportacion,
-      id_usuariocreacion: Number(id_usuariocreacion),
-    };
+      nombreArchivo: file?.name || `Importacion del dia ${fecha}`,
+      id_usuariocreacion: Number(id_usuariocreacion)
+    });
 
-    const importacion = await createJornadas(insertJornadaParametros);
-
-    if (id_tipoimportacion === 2) {
-
-      const proyectosSoportados = await getProyectosConHikVision();
-
-      if (!proyectosSoportados.includes(id_proyecto)) {
-        return NextResponse.json({ error: "Proyecto no disponible" }, { status: 400 });
-      };
-
-      if (
-        !id_proyecto || isNaN(id_proyecto) ||
-        !fecha || typeof fecha !== 'string'
-      ) {
-        return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
-      };
-
-      const dispositivos = await getControlByProyecto({ id_proyecto });
-
-      const getAusentesParametros = {
+    if (validation.data.id_tipoimportacion === 2) {
+      const ausentes = await getAusentesProyecto({
         fecha: fechaConvertida,
-        dispositivos,
-        filtroProyecto: id_proyecto
-      };
+        filtroProyecto: validation.data.id_proyecto
+      });
 
-      const ausentes = await getAusentes(getAusentesParametros);
-
-      const createAbsencesParametros = {
+      await createAbsences({
         fecha: fecha,
-        id_proyecto: id_proyecto,
+        id_proyecto: validation.data.id_proyecto,
         ausentes: ausentes,
         id_usuario: Number(payload.id),
         id_importacion: importacion.id_importacion,
-      };
-
-      await createAbsences(createAbsencesParametros);
+      });
     };
 
     return NextResponse.json({
       importacion: importacion.id_importacion,
       completa: importacion.completa,
     }, { status: 200 });
-
   } catch (error) {
-    console.error("Error procesando archivo:", error);
-    return NextResponse.json({ error: "Error procesando archivo" }, { status: 500 });
+    return handleApiError(error, 'POST /api/import');
   };
-};
+};//

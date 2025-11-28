@@ -1,58 +1,85 @@
 "use server";
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getTiposImportacion(){
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM tipoimportacion
-            WHERE nombre != 'Ausentes'
-        `;
+export async function getTiposImportacion() {
+    return executeQuery(
+        'getTiposImportacion',
+        async () => {
 
-        const resultado = await client.query(texto);
-        
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getTiposImportacion: ", error);
-        throw error;
-    };
-};
+            const getQuery = `
+                SELECT * FROM tipoimportacion
+                WHERE nombre != 'Ausentes'
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows;
+        }
+    );
+};//
 
 export async function getTipoImportacionProSoft() {
-    try {
-        const texto = `
-            SELECT id
-            FROM tipoimportacion
-            WHERE nombre = 'ProSoft'
-        `;
+    return executeQuery(
+        'getTipoImportacionProSoft',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                    SELECT id FROM tipoimportacion
+                    WHERE nombre = 'ProSoft'
+                `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getTipoImportacionProSoft: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                        INSERT INTO tipoimportacion (nombre)
+                        VALUES ($1)
+                        ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                        RETURNING id
+                    `;
+
+                const insertResult = await client.query(insertQuery, ['ProSoft']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getTipoImportacionAusentes() {
-    try {
-        const texto = `
-            SELECT id
-            FROM tipoimportacion
-            WHERE nombre = 'Ausentes'
-        `;
+    return executeQuery(
+        'getTipoImportacionAusentes',
+        async () => {
 
-        const resultado = await client.query(texto);
+            const getQuery = `
+                    SELECT id FROM tipoimportacion
+                    WHERE nombre = 'Ausentes'
+                `;
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getTipoImportacionAusentes: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                        INSERT INTO tipoimportacion (nombre)
+                        VALUES ($1)
+                        ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                        RETURNING id
+                    `;
+
+                const insertResult = await client.query(insertQuery, ['Ausentes']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//

@@ -1,41 +1,68 @@
 "use server"
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getEstadoUsuarioBaja(){
-    try {
-        const texto = `
-            SELECT 
-            id
-            FROM estadousuario
-            WHERE nombre = 'Baja'
-        `;
-        
-        const resultado = await client.query(texto);
+export async function getEstadoUsuarioBaja() {
+    return executeQuery(
+        'getEstadoUsuarioBaja',
+        async () => {
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoUsuarioBaja: ", error);
-        throw error;
-    };
-};
+            const getQuery = `
+                SELECT id FROM estadousuario
+                WHERE nombre = 'Baja'
+            `;
 
-export async function getEstadoUsuarioActivo(){
-    try {
-        const texto = `
-            SELECT 
-            id
-            FROM estadousuario
-            WHERE nombre = 'Activo'
-        `;
-        
-        const resultado = await client.query(texto);
+            const getResult = await client.query(getQuery);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoUsuarioActivo: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadousuario (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Baja']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
+
+export async function getEstadoUsuarioActivo() {
+        return executeQuery(
+        'getEstadoUsuarioActivo',
+        async () => {
+
+            const getQuery = `
+                SELECT id FROM estadousuario
+                WHERE nombre = 'Activo'
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadousuario (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Activo']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//

@@ -1,90 +1,112 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
+import { handleApiError } from "@/lib/utils/error";
+import { validateData } from "@/lib/utils/validation";
 import { updateAusenciaTipoAusencia } from "@/services/ausencia/service.ausencia";
 import { deleteJornada, getJornadaAusencia, updateJornada, validateJornada } from "@/services/jornada/service.jornada";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
+type updateJornadaBody = {
+    accion: string,
+};
 
+type justificarData = {
+    tipoAusencia: number,
+};
+
+type editarData = {
+    entrada: string,
+    salida: string,
+};
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
     try {
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
+
         const { id: id_jornada } = await params;
-        const parametros = await request.json();
 
         const id_usuariomodificacion = Number(payload.id);
+        const body = await request.json();
 
-        if (parametros.accion === "validar") {
-            await validateJornada({ id_jornada, id_usuariomodificacion });
+        const validation = validateData<updateJornadaBody>(body, [
+            { field: 'accion', required: true, type: 'string' }
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
+        };
+
+        if (validation.data.accion === "validar") {
+
+            await validateJornada({
+                id_jornada,
+                id_usuariomodificacion
+            });
 
             return NextResponse.json({ message: "Jornada validada correctamente." }, { status: 200 });
-        };
+        } else if (validation.data.accion === "justificar") {
 
-        if (parametros.accion === "justificar") {
+            const justificarValidation = validateData<justificarData>({
+                tipoAusencia: Number(body.tipoAusencia)
+            }, [
+                { field: 'tipoAusencia', required: true, type: 'number' }
+            ]);
 
-            const id_tipoAusencia = parametros.tipoAusencia as number;
-
-            if (isNaN(id_tipoAusencia)) {
-                return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+            if (!justificarValidation.valid) {
+                throw justificarValidation.error;
             };
 
-            const getJornadaAusenciaParametros = {
+            const ausencia = await getJornadaAusencia({
                 id: id_jornada,
-            };
+            });
 
-            const ausencia = await getJornadaAusencia(getJornadaAusenciaParametros);
-
-            const updateAusenciaTipoAusenciaParametros = {
+            await updateAusenciaTipoAusencia({
                 id: ausencia,
-                id_tipoAusencia
-            };
-
-            await updateAusenciaTipoAusencia(updateAusenciaTipoAusenciaParametros);
+                id_tipoAusencia: justificarValidation.data.tipoAusencia
+            });
 
             return NextResponse.json({ message: "Ausencia validada correctamente." }, { status: 200 });
+        } else if (validation.data.accion === "editar") {
+
+            const editarValidation = validateData<editarData>({
+                entrada: body.entrada as string,
+                salida: body.salida as string,
+            }, [
+                { field: 'entrada', required: true, type: 'string' },
+                { field: 'salida', required: true, type: 'string' }
+            ]);
+
+            if (!editarValidation.valid) {
+                throw editarValidation.error;
+            };
+
+            await updateJornada({
+                id_jornada,
+                entrada: editarValidation.data.entrada,
+                salida: editarValidation.data.salida,
+                id_usuariomodificacion
+            });
+
+            return NextResponse.json({ message: "Jornada editada correctamente." }, { status: 200 });
         };
-
-        const entrada = parametros.entrada as string;
-        const salida = parametros.salida as string;
-
-        if (
-            !entrada ||
-            !salida
-        ) {
-            return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
-        };
-
-        const updateJornadaParametro = {
-            id_jornada,
-            entrada,
-            salida,
-            id_usuariomodificacion
-        };
-
-        await updateJornada(updateJornadaParametro);
-
-        return NextResponse.json({ message: "Jornada editada correctamente." }, { status: 200 });
     } catch (error) {
-        console.error("Error actualizando jornada: ", error);
-        return NextResponse.json({ error: "Error interno" })
+        return handleApiError(error, 'PATCH /api/jornada/[id]');
     };
 };
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: number }> }) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
-
     try {
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
+
         const { id: id_jornada } = await params;
 
-        const deleteJornadaParametros = {
+        await deleteJornada({
             id: id_jornada,
-        };
-
-        await deleteJornada(deleteJornadaParametros);
+        });
 
         return NextResponse.json({ message: "Jornada eliminada correctamente." }, { status: 200 });
     } catch (error) {
-        console.error("Error eliminando jornada: ", error);
-        return NextResponse.json({ error: "Error interno" })
+        return handleApiError(error, 'DELETE /api/jornada/[id]');
     };
 };

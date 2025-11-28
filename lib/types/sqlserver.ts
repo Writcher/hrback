@@ -20,14 +20,10 @@ export type ResultadoProcesado = {
     importacionCompleta: boolean,
 };
 
-export type getPresentesParametros = {
+export type getPresentesProyectoParametros = {
     fecha: string,
     dispositivos: string[],
     filtroProyecto: number,
     pagina?: number,
     filasPorPagina?: number,
-};
-
-export type getNominaProyectoParametros = {
-    id_proyecto: number,
 };

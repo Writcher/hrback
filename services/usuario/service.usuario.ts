@@ -4,178 +4,191 @@ import { deleteUsuarioParametros, editUsuarioParametros, getUsuarioPorCorreoPara
 import { db } from "@vercel/postgres";
 import bcrypt from "bcryptjs";
 import { getEstadoUsuarioActivo, getEstadoUsuarioBaja } from "../estadousuario/service.estadousuario";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
 
 const client = db;
 
 export async function getUsuarioPorCorreo(parametros: getUsuarioPorCorreoParametros) {
-    try {
-        const id_baja = await getEstadoUsuarioBaja();
-        
-        const correoMinuscula = parametros.correo.toLowerCase();
+    return executeQuery(
+        'getUsuarioPorCorreo',
+        async () => {
 
-        const texto = `
-            SELECT *
-            FROM "usuario"
-            WHERE correo ILIKE $1
-                AND id_estadousuario != $2
-        `;
+            const id_estadousuario = await getEstadoUsuarioBaja();
+            const correoMinuscula = parametros.correo.toLowerCase();
 
-        const valores = [correoMinuscula, id_baja];
+            const getQuery = `
+                SELECT * FROM usuario
+                WHERE correo ILIKE $1
+                    AND id_estadousuario != $2
+            `;
 
-        const respuesta = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                correoMinuscula,
+                id_estadousuario
+            ]);
 
-        return respuesta.rows[0];
-    } catch (error) {
-        console.error("Error en getUsuarioPorCorreo: ", error);
-        throw error;
-    };
-};
+            return getResult.rows[0];
+        },
+
+        parametros
+    );
+};//
 
 export async function getUsuarios(parametros: getUsuariosParametros) {
-    try {
-        const id_estadobaja = await getEstadoUsuarioBaja();
+    return executeQuery(
+        'getUsuarios',
+        async () => {
 
-        const offset = (parametros.pagina) * parametros.filas;
-        const valoresBase: any = [];
+            const offset = (parametros.pagina) * parametros.filas;
+            const valoresBase: any = [];
 
-        const columnasValidas = ['nombre', 'correo', 'id_tipousuario', 'id_estadousuario'];
+            const columna = parametros.columna;
+            const direccion = parametros.direccion.toUpperCase();
 
-        if (!columnasValidas.includes(parametros.columna)) {
-            throw new Error('Columna Invalida');
-        };
-
-        const direccionesValidas = ['ASC', 'DESC'];
-
-        if (!direccionesValidas.includes(parametros.direccion.toUpperCase())) {
-            throw new Error('Dirección de ordenación invalida');
-        };
-
-        const columna = parametros.columna;
-        const direccion = parametros.direccion.toUpperCase();
-
-        let textoFiltroBase = 'WHERE 1=1 '
-
-        const busquedaNombre = `%${parametros.busquedaNombre}%`;
-
-        if (parametros.filtroTipoUsuario !== 0) {
-            textoFiltroBase += `
-                AND u.id_tipousuario = $${valoresBase.length + 1}
+            let filtro = `
+                WHERE 1=1
             `;
-            valoresBase.push(parametros.filtroTipoUsuario);
-        };
 
-        if (parametros.busquedaNombre !== "") {
-            textoFiltroBase += `
-                AND unaccent(u.nombre) ILIKE unaccent($${valoresBase.length + 1}) 
+            if (parametros.filtroTipoUsuario !== 0) {
+                filtro += `
+                    AND u.id_tipousuario = $${valoresBase.length + 1}`;
+                valoresBase.push(parametros.filtroTipoUsuario);
+            };
+
+            if (parametros.busquedaNombre !== "") {
+                filtro += `
+                    AND unaccent(u.nombre) ILIKE unaccent($${valoresBase.length + 1}) `;
+                valoresBase.push(`%${parametros.busquedaNombre}%`);
+            };
+
+            const orden = `
+                ORDER BY ${columna} ${direccion}
             `;
-            valoresBase.push(busquedaNombre);
-        };
 
-        const textoOrden = `
-            ORDER BY ${columna} ${direccion}
-        `;
+            const valoresPrincipal = [...valoresBase, parametros.filas, offset];
 
-        const valoresPrincipal = [...valoresBase, parametros.filas, offset];
+            const limite = `
+                LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}
+            `;
 
-        const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
+            let getQuery = `
+                SELECT
+                    u.id,
+                    u.nombre,
+                    u.correo,
+                    u.id_tipousuario,
+                    tu.nombre AS tipousuario,
+                    eu.nombre AS estadousuario
+                FROM "usuario" u
+                JOIN "tipousuario" tu ON u.id_tipousuario = tu.id
+                JOIN "estadousuario" eu ON u.id_estadousuario = eu.id
+                ${filtro}
+                ${orden}
+                ${limite}
+            `;
 
-        let texto = `
-            SELECT
-                u.id,
-                u.nombre,
-                u.correo,
-                u.id_tipousuario,
-                tu.nombre AS tipousuario,
-                eu.nombre AS estadousuario
-            FROM "usuario" u
-            JOIN "tipousuario" tu ON u.id_tipousuario = tu.id
-            JOIN "estadousuario" eu ON u.id_estadousuario = eu.id
-            ${textoFiltroBase}
-            ${textoOrden}
-            ${textoLimite}
-        `;
+            let countQuery = `
+                SELECT COUNT(*) AS total
+                FROM "usuario" u
+                ${filtro}
+            `;
 
-        const resultado = await client.query(texto, valoresPrincipal);
+            const getResult = await client.query(getQuery, valoresPrincipal);
 
-        let textoConteo = `
-            SELECT COUNT(*) AS total
-            FROM "usuario" u
-            ${textoFiltroBase}
-        `;
+            const countResult = await client.query(countQuery, valoresBase);
 
-        const resultadoConteo = await client.query(textoConteo, valoresBase);
+            return {
+                usuarios: getResult.rows,
+                totalUsuarios: countResult.rows[0].total,
+            };
+        },
 
-        return {
-            usuarios: resultado.rows,
-            totalUsuarios: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getUsuarios: ", error);
-        throw error;
-    };
+        parametros
+    );
 };
 
 export async function insertUsuario(parametros: insertUsuarioParametros) {
-    try {
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(parametros.contraseña, salt);
+    return executeQuery(
+        'insertUsuario',
+        async () => {
 
-        const id_estadousuario = await getEstadoUsuarioActivo();
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(parametros.contraseña, salt);
 
-        const texto = `
-            INSERT INTO "usuario" (correo, nombre, contraseña, id_tipousuario, id_estadousuario)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-        `;
+            const id_estadousuario = await getEstadoUsuarioActivo();
 
-        const valores = [parametros.correo, parametros.nombre, hash, parametros.id_tipousuario, id_estadousuario];
+            const getQuery = `
+                INSERT INTO usuario (correo, nombre, contraseña, id_tipousuario, id_estadousuario)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.correo,
+                parametros.nombre,
+                hash,
+                parametros.id_tipousuario,
+                id_estadousuario
+            ]);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertUsuario: ", error);
-        throw error;
-    };
-};
+            return getResult.rows[0].id;
+        },
+
+        parametros
+    );
+};//
 
 export async function editUsuario(parametros: editUsuarioParametros) {
-    try {
-        const id_baja = await getEstadoUsuarioBaja();
+    return executeQuery(
+        'editUsuario',
+        async () => {
 
-        const texto = `
-            UPDATE "usuario"
-            SET nombre = $1, correo = $2, id_tipousuario = $3
-            WHERE id = $4
-                AND id_estadousuario != $5
-        `;
-        const valores = [parametros.nombre, parametros.correo, parametros.id_tipousuario, parametros.id, id_baja];
+            const id_estadousuario = await getEstadoUsuarioBaja();
 
-        await client.query(texto, valores);
+            const getQuery = `
+                UPDATE usuario
+                SET nombre = $1, correo = $2, id_tipousuario = $3
+                WHERE id = $4
+                    AND id_estadousuario != $5
+            `;
 
-        return;
-    } catch (error) {
-        console.error("Error en editUsuario: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery, [
+                parametros.nombre,
+                parametros.correo,
+                parametros.id_tipousuario,
+                parametros.id,
+                id_estadousuario
+            ]);
+
+            checkRowsAffected(getResult, 'TipoUsuario', { id: parametros.id_tipousuario });
+        },
+
+        parametros
+    );
+};//
 
 export async function deleteUsuario(parametros: deleteUsuarioParametros) {
-    try {
-        const id_baja = await getEstadoUsuarioBaja();
+    return executeQuery(
+        'deleteUsuario',
+        async () => {
 
-        const texto = `
-            UPDATE "usuario"
-            SET id_estadousuario = $2
-            WHERE id = $1
-                AND id_estadousuario != $2
-        `;
+            const id_estadousuario = await getEstadoUsuarioBaja();
 
-        const valores = [parametros.id, id_baja];
+            const getQuery = `
+                UPDATE usuario
+                SET id_estadousuario = $2
+                WHERE id = $1
+                    AND id_estadousuario != $2
+            `;
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en deleteUsuario: ", error);
-        throw error;
-    };
-};
+            const getResult = await client.query(getQuery, [
+                parametros.id,
+                id_estadousuario
+            ]);
+
+            checkRowsAffected(getResult, 'TipoUsuario', { id: parametros.id });
+        },
+
+        parametros
+    );
+};//

@@ -3,39 +3,78 @@ import { verifyAuthToken } from "@/lib/utils/authutils";
 import { getJornadasResumen } from "@/services/jornada/service.jornada";
 import { getFileName } from "@/lib/utils/excel";
 import { generarExcel } from "@/services/excel/service.excel";
-import { generarExcelPresentes, getPresentes } from "@/services/sqlserver/service.sqlserver";
+import { generarExcelPresentes, getPresentesProyecto } from "@/services/sqlserver/service.sqlserver";
 import { getControlByProyecto } from "@/services/control/service.control";
 import { getProyectos } from "@/services/proyecto/service.proyecto";
+import { validateData } from "@/lib/utils/validation";
+import { handleApiError } from "@/lib/utils/error";
 
-export async function GET(req: NextRequest) {
-    const { error, payload } = await verifyAuthToken(req);
-    if (error) return error;
+type exportURL = {
+    accion: string,
+};
 
+type validationPresentes = {
+    fecha: string,
+    proyecto: number,
+};
+
+type validationResumen = {
+    proyecto: number,
+    mes: number,
+    quincena: number
+};
+
+export async function GET(request: NextRequest) {
     try {
-        const { searchParams } = new URL(req.url);
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
 
-        const proyecto = Number(searchParams.get('proyecto'));
-        const mes = Number(searchParams.get('mes'));
-        const quincena = Number(searchParams.get('quincena'));
-        const fecha = searchParams.get('fecha');
-        const accion = searchParams.get('accion');
+        const url = new URL(request.url);
 
-        if (accion === 'presentes') {
-            if (fecha === null) {
-                return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
+        const data = {
+            proyecto: Number(url.searchParams.get('proyecto')),
+            mes: Number(url.searchParams.get('mes')),
+            quincena: Number(url.searchParams.get('quincena')),
+            fecha: url.searchParams.get('fecha'),
+            accion: url.searchParams.get('accion'),
+        };
+
+        const validation = validateData<exportURL>({
+            accion: data.accion
+        }, [
+            { field: 'accion', required: true, type: 'string' }
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
+        };
+
+        if (validation.data.accion === 'presentes') {
+
+            const validationPresentes = validateData<validationPresentes>({
+                fecha: data.fecha,
+                proyecto: data.proyecto
+            }, [
+                { field: 'fecha', required: true, type: 'string' },
+                { field: 'proyecto', required: true, type: 'number' }
+            ]);
+
+            if (!validationPresentes.valid) {
+                throw validationPresentes.error;
             };
-            const fechaConvertida = fecha.split('-').reverse().join('-');
-            const dispositivos = await getControlByProyecto({ id_proyecto: proyecto });
-            const getPresentesParametros = {
+
+            const fechaConvertida = validationPresentes.data.fecha.split('-').reverse().join('-');
+
+            const dispositivos = await getControlByProyecto({
+                id_proyecto: validationPresentes.data.proyecto
+            });
+
+            const datos = await getPresentesProyecto({
                 fecha: fechaConvertida,
                 dispositivos,
-                filtroProyecto: proyecto,
-            };
+                filtroProyecto: validationPresentes.data.proyecto,
+            });
 
-            // Use getPresentes instead
-            const datos = await getPresentes(getPresentesParametros);
-
-            // Extract id_empleado and nombre from the data
             const presentes = datos.presentes.map(p => ({
                 id_empleado: p.id_reloj,
                 nombre: p.nombre
@@ -46,15 +85,17 @@ export async function GET(req: NextRequest) {
                 nombre: a.nombre
             }));
 
-            // Generate Excel with both sheets
-            const excelGenerado = await generarExcelPresentes(presentes, ausentes);
+            const excel = await generarExcelPresentes(presentes, ausentes);
 
             const proyectos = await getProyectos();
+
             const nombreProyecto = proyectos.find(
-                (p: { id: number; nombre: string }) => p.id === proyecto
+                (p: { id: number; nombre: string }) => p.id === validationPresentes.data.proyecto
             )?.nombre;
-            const nombreExcel = `Listado de Presentes y Ausentes - ${nombreProyecto} - ${fecha}.xlsx`;
-            const uint8Excel = new Uint8Array(excelGenerado);
+
+            const nombreExcel = `Listado de Presentes y Ausentes - ${nombreProyecto} - ${validationPresentes.data.fecha}.xlsx`;
+
+            const uint8Excel = new Uint8Array(excel);
 
             return new NextResponse(uint8Excel, {
                 status: 200,
@@ -64,50 +105,49 @@ export async function GET(req: NextRequest) {
                     'Content-Length': uint8Excel.byteLength.toString()
                 }
             });
+        } else if (validation.data.accion === 'resumen') {
+
+            const validationResumen = validateData<validationResumen>({
+                proyecto: data.proyecto,
+                mes: data.mes,
+                quincena: data.quincena,
+            }, [
+                { field: 'proyecto', required: true, type: 'number' },
+                { field: 'mes', required: true, type: 'number' },
+                { field: 'quincena', required: true, type: 'number' }
+            ]);
+
+            if (!validationResumen.valid) {
+                throw validationResumen.error;
+            };
+
+            const resumen = await getJornadasResumen({
+                proyecto: validationResumen.data.proyecto,
+                mes: validationResumen.data.mes,
+                quincena: validationResumen.data.quincena,
+            });
+
+            const excel = await generarExcel(resumen); //no toque esta funcion
+
+            const nombre = await getFileName({
+                proyecto: validationResumen.data.proyecto,
+                mes: validationResumen.data.mes,
+                quincena: validationResumen.data.quincena,
+            });
+
+            const uint8Excel = new Uint8Array(excel);
+
+            return new NextResponse(uint8Excel, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Content-Disposition': `attachment; filename="${nombre}"`,
+                    'Content-Length': uint8Excel.byteLength.toString()
+                }
+            });
         };
 
-        if (
-            isNaN(proyecto) ||
-            isNaN(mes) ||
-            isNaN(quincena)
-        ) {
-            return NextResponse.json({ error: "Faltan parámetros o son inválidos" }, { status: 400 });
-        };
-
-        const getJornadasResumenParametros = {
-            proyecto: proyecto,
-            mes: mes,
-            quincena: quincena,
-        };
-
-        const resumenJornadas = await getJornadasResumen(getJornadasResumenParametros);
-
-        if (resumenJornadas.length === 0) {
-            return NextResponse.json({ error: 'No se encontraron datos para los parámetros especificados' }, { status: 404 });
-        };
-
-        const excelGenerado = await generarExcel(resumenJornadas);
-
-        const getFileNameParametros = {
-            proyecto: proyecto,
-            mes: mes,
-            quincena: quincena,
-        };
-
-        const nombreExcel = await getFileName(getFileNameParametros);
-
-        const uint8Excel = new Uint8Array(excelGenerado);
-
-        return new NextResponse(uint8Excel, {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Disposition': `attachment; filename="${nombreExcel}"`,
-                'Content-Length': uint8Excel.byteLength.toString()
-            }
-        });
     } catch (error) {
-        console.error("Error procesando Excel:", error);
-        return NextResponse.json({ error: "Error procesando Excel" }, { status: 500 });
+        return handleApiError(error, 'GET /api/export');
     };
-};
+};//

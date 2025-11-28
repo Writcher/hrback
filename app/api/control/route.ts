@@ -1,19 +1,36 @@
 import { verifyAuthToken } from "@/lib/utils/authutils";
+import { handleApiError } from "@/lib/utils/error";
+import { validateData } from "@/lib/utils/validation";
 import { createControl } from "@/services/control/service.control";
 import { NextRequest, NextResponse } from "next/server";
 
+type createControlBody = {
+    id_proyecto: number;
+    serie: string;
+};
+
 export async function POST(request: NextRequest) {
-    const { error, payload } = await verifyAuthToken(request);
-    if (error) return error;
-
     try {
-        const parametros = await request.json();
+        const { error, payload } = await verifyAuthToken(request);
+        if (error) return error;
 
-        await createControl(parametros);
+        const body = await request.json();
+
+        const validation = validateData<createControlBody>(body, [
+            { field: 'id_proyecto', required: true, type: 'number', min: 1 },
+            { field: 'serie', required: true, type: 'string', minLength: 1, maxLength: 50 }
+        ]);
+
+        if (!validation.valid) {
+            throw validation.error;
+        };
+
+        await createControl({
+            ...validation.data
+        });
 
         return NextResponse.json({ message: "Control creado." }, { status: 201 });
     } catch (error) {
-        console.error("Error creando Control:", error);
-        return NextResponse.json({ error: "Error creando Control" }, { status: 500 });
+        return handleApiError(error, 'POST /api/control');
     };
-};
+};//

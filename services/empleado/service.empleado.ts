@@ -6,379 +6,366 @@ import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoemplead
 import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 import { getTurnoNocturno } from "../turno/service.turno";
 import { getTipoImportacionProSoft } from "../tipoimportacion/service.tipoimportacion";
-import { getNominaProyecto, getPresentes, getPresentesGlobal } from "../sqlserver/service.sqlserver";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
+import { createConflictError } from "@/lib/utils/error";
 
 const client = db;
 
 export async function getEmpleados(parametros: getEmpleadosParametros) {
-    try {
+    return executeQuery(
+        'getEmpleados',
+        async () => {
 
-        const empleado_mensualizado = await getTipoEmpleadoMensualizado();
+            const offset = (parametros.pagina) * parametros.filasPorPagina;
+            const valoresBase: any = [];
 
-        const offset = (parametros.pagina) * parametros.filasPorPagina;
-        const valoresBase: any = [];
+            const id_tipoempleado = await getTipoEmpleadoMensualizado();
 
-        const columnasValidas = ['nombreapellido', 'id_reloj', 'legajo', 'id_proyecto', 'id_estadoempleado', 'id_tipoempleado', 'id_turno'];
+            let join = ``;
 
-        if (!columnasValidas.includes(parametros.ordenColumna)) {
-            throw new Error('Columna Invalida');
-        };
-
-        const direccionesValidas = ['ASC', 'DESC'];
-
-        if (!direccionesValidas.includes(parametros.ordenDireccion.toUpperCase())) {
-            throw new Error('Dirección de ordenación invalida');
-        };
-
-        const columna = parametros.ordenColumna;
-        const direccion = parametros.ordenDireccion.toUpperCase();
-
-        let textoFiltroBase = 'WHERE 1=1 ';
-        let textoJoin = '';
-
-        const busquedaNombre = `%${parametros.busquedaNombre}%`;
-
-        if (parametros.filtroTipoEmpleado !== 0) {
-            textoFiltroBase += `
-                AND e.id_tipoempleado = $${valoresBase.length + 1}
-            `;
-            valoresBase.push(parametros.filtroTipoEmpleado);
-        };
-
-        if (parametros.busquedaNombre !== "") {
-            textoFiltroBase += `
-                AND unaccent(e.nombreapellido) ILIKE unaccent($${valoresBase.length + 1}) 
-            `;
-            valoresBase.push(busquedaNombre);
-        };
-
-        if (parametros.filtroProyecto !== 0) {
-            textoFiltroBase += `
-                AND e.id_proyecto = $${valoresBase.length + 1}
-            `;
-            valoresBase.push(parametros.filtroProyecto);
-        };
-
-        const busquedaLegajo = `%${parametros.busquedaLegajo}%`;
-
-        if (parametros.busquedaLegajo !== 0) {
-            textoFiltroBase += `
-                AND CAST(e.legajo AS TEXT) LIKE $${valoresBase.length + 1} 
-            `;
-            valoresBase.push(busquedaLegajo);
-        };
-
-        if (parametros.filtroTipoAusencia !== -1) {
-            textoJoin += `
-                JOIN jornada j ON e.id = j.id_empleado
-            `;
-            textoFiltroBase += `
-                AND j.id_ausencia IS NOT NULL
+            let filtro = `
+                WHERE 1=1
             `;
 
-            if (parametros.filtroTipoAusencia !== 0) {
-                textoJoin += `
-                    JOIN ausencia a ON j.id_ausencia = a.id
-                `;
-                textoFiltroBase += `
-                    AND a.id_tipoausencia = $${valoresBase.length + 1}
-                `;
-                valoresBase.push(parametros.filtroTipoAusencia);
+            if (parametros.filtroTipoEmpleado !== 0) {
+                filtro += `
+                    AND e.id_tipoempleado = $${valoresBase.length + 1}`;
+                valoresBase.push(parametros.filtroTipoEmpleado);
             };
 
-            if (parametros.filtroMes !== 0) {
-                textoFiltroBase += `
-                    AND j.id_mes = $${valoresBase.length + 1}
-                `;
-                valoresBase.push(parametros.filtroMes);
+            if (parametros.busquedaNombre !== "") {
+                filtro += `
+                    AND unaccent(e.nombreapellido) ILIKE unaccent($${valoresBase.length + 1}) `;
+                valoresBase.push(`%${parametros.busquedaNombre}%`);
             };
 
-            if (parametros.filtroQuincena !== 0) {
-                textoJoin += `JOIN "quincena" q ON j.id_quincena = q.id `;
-                textoFiltroBase += `AND q.quincena = $${valoresBase.length + 1} `;
-                valoresBase.push(parametros.filtroQuincena);
+            if (parametros.filtroProyecto !== 0) {
+                filtro += `
+                    AND e.id_proyecto = $${valoresBase.length + 1}`;
+                valoresBase.push(parametros.filtroProyecto);
             };
-        };
 
-        const textoOrden = `
-            ORDER BY ${columna} ${direccion}
-        `;
+            if (parametros.busquedaLegajo !== 0) {
+                filtro += `
+                    AND CAST(e.legajo AS TEXT) LIKE $${valoresBase.length + 1}`;
+                valoresBase.push(`%${parametros.busquedaLegajo}%`);
+            };
 
-        const valoresPrincipal = [...valoresBase, empleado_mensualizado, parametros.filasPorPagina, offset];
+            if (parametros.filtroMarcaManual === true) {
+                join += `
+                    JOIN jornada jm ON e.id = jm.id_empleado
+                    JOIN fuentemarca fmm ON jm.id_fuentemarca = fmm.id`;
+                filtro += `
+                    AND fmm.nombre = 'Manual'`;
+            };
 
-        const textoLimite = `LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}`;
+            if (parametros.filtroTipoAusencia !== -1) {
+                join += `
+                    JOIN jornada j ON e.id = j.id_empleado`;
+                filtro += `
+                    AND j.id_ausencia IS NOT NULL`;
 
-        const textoMensualizado = `
-            COALESCE((te.id = $${valoresPrincipal.length - 2}), false) AS es_mensualizado
-        `;
+                if (parametros.filtroTipoAusencia !== 0) {
+                    join += `
+                        JOIN ausencia a ON j.id_ausencia = a.id`;
+                    filtro += `
+                        AND a.id_tipoausencia = $${valoresBase.length + 1}`;
+                    valoresBase.push(parametros.filtroTipoAusencia);
+                };
 
-        if (parametros.filtroMarcaManual === true) {
-            textoJoin += `
-                JOIN jornada jm ON e.id = jm.id_empleado
-                JOIN fuentemarca fmm ON jm.id_fuentemarca = fmm.id
+                if (parametros.filtroMes !== 0) {
+                    filtro += `
+                        AND j.id_mes = $${valoresBase.length + 1}`;
+                    valoresBase.push(parametros.filtroMes);
+                };
+
+                if (parametros.filtroQuincena !== 0) {
+                    join += `
+                        JOIN "quincena" q ON j.id_quincena = q.id`;
+                    filtro += `
+                        AND q.quincena = $${valoresBase.length + 1}`;
+                    valoresBase.push(parametros.filtroQuincena);
+                };
+            };
+
+            const orden = `
+                ORDER BY ${parametros.ordenColumna} ${parametros.ordenDireccion.toUpperCase()}
             `;
-            textoFiltroBase += `
-                AND fmm.nombre = 'Manual'
+
+            const valoresPrincipal = [...valoresBase, id_tipoempleado, parametros.filasPorPagina, offset];
+
+            const limite = `
+                LIMIT $${valoresPrincipal.length - 1} OFFSET $${valoresPrincipal.length}
             `;
-        };
 
-        let texto = `
-            SELECT DISTINCT
-                e.id,
-                e.nombreapellido AS nombre,
-                e.id_reloj,
-                e.legajo,
-                e.id_proyecto,
-                e.id_estadoempleado,  -- ADD THIS LINE
-                p.nombre AS nombreproyecto,
-                ee.nombre AS estadoempleado,
-                te.nombre AS tipoempleado,
-                te.id AS id_tipoempleado,
-                t.nombre AS turno,
-                t.id AS id_turno,
-                ${textoMensualizado}
-            FROM "empleado" e
-            JOIN "proyecto" p ON e.id_proyecto = p.id
-            JOIN "estadoempleado" ee ON e.id_estadoempleado = ee.id
-            LEFT JOIN "turno" t ON e.id_turno = t.id
-            LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
-            ${textoJoin}
-            ${textoFiltroBase}
-            GROUP BY e.id, p.nombre, ee.nombre, te.nombre, te.id, t.nombre, t.id
-            ${textoOrden}
-            ${textoLimite}
-        `;
+            const mensualizado = `
+                COALESCE((te.id = $${valoresPrincipal.length - 2}), false) AS es_mensualizado
+            `;
 
-        const resultado = await client.query(texto, valoresPrincipal);
+            const getQuery = `
+                SELECT DISTINCT
+                    e.id,
+                    e.nombreapellido AS nombre,
+                    e.id_reloj,
+                    e.legajo,
+                    e.id_proyecto,
+                    e.id_estadoempleado,  -- ADD THIS LINE
+                    p.nombre AS nombreproyecto,
+                    ee.nombre AS estadoempleado,
+                    te.nombre AS tipoempleado,
+                    te.id AS id_tipoempleado,
+                    t.nombre AS turno,
+                    t.id AS id_turno,
+                    ${mensualizado}
+                FROM empleado e
+                JOIN proyecto p ON e.id_proyecto = p.id
+                JOIN estadoempleado ee ON e.id_estadoempleado = ee.id
+                LEFT JOIN turno t ON e.id_turno = t.id
+                LEFT JOIN tipoempleado te ON e.id_tipoempleado = te.id
+                ${join}
+                ${filtro}
+                GROUP BY e.id, p.nombre, ee.nombre, te.nombre, te.id, t.nombre, t.id
+                ${orden}
+                ${limite}
+            `;
 
-        let textoConteo = `
-            SELECT COUNT(*) AS total
-            FROM "empleado" e
-            ${textoJoin}
-            ${textoFiltroBase}
-        `;
+            const countQuery = `
+                SELECT COUNT(*) AS total
+                FROM empleado e
+                ${join}
+                ${filtro}
+            `;
 
-        const resultadoConteo = await client.query(textoConteo, valoresBase);
+            const getResult = await client.query(getQuery, valoresPrincipal);
 
-        return {
-            empleados: resultado.rows,
-            totalEmpleados: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getEmpleados: ", error);
-        throw error;
-    };
+            const countResult = await client.query(countQuery, valoresBase);
+
+            return {
+                empleados: getResult.rows,
+                totalEmpleados: countResult.rows[0].total,
+            };
+        },
+
+        parametros
+    );
 };//
 
 export async function insertEmpleado(parametros: insertEmpleadoParametros) {
-    try {
-        const empleadoActivo = await getEstadoEmpleadoActivo();
+    return executeQuery(
+        'insertEmpleado',
+        async () => {
 
-        const legajo = parametros.legajo === '' ? null : parametros.legajo;
+            const id_estadoempleado = await getEstadoEmpleadoActivo();
 
-        const id_tipoempleado = parametros.id_tipoempleado === '' ? null : parametros.id_tipoempleado;
+            const insertQuery = `
+                INSERT INTO empleado (nombreapellido, id_reloj, id_proyecto, legajo, id_estadoempleado, id_tipoempleado)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+            `;
 
-        const texto = `
-            INSERT INTO "empleado" (nombreapellido, id_reloj, id_proyecto, legajo, id_estadoempleado, id_tipoempleado)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id
-        `;
+            const insertResult = await client.query(insertQuery, [
+                parametros.nombre,
+                parametros.id_reloj,
+                parametros.id_proyecto,
+                parametros.legajo,
+                id_estadoempleado,
+                parametros.id_tipoempleado
+            ]);
 
-        const valores = [parametros.nombre, parametros.id_reloj, parametros.id_proyecto, legajo, empleadoActivo, id_tipoempleado];
+            checkRowsAffected(insertResult, 'Empleado no creado');
 
-        const resultado = await client.query(texto, valores);
+            return insertResult.rows[0].id;
+        },
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en insertEmpleado: ", error);
-        throw error;
-    };
+        parametros
+    );
 };//
 
 export async function deactivateEmpleado(parametros: deactivateEmpleadoParametros) {
-    try {
-        const empleadoBaja = await getEstadoEmpleadoBaja();
+    return executeQuery(
+        'deactivateEmpleado',
+        async () => {
 
-        const texto = `
-            UPDATE "empleado"
-            SET id_estadoempleado = $1
-            WHERE id = $2
-        `;
+            const id_estadoempleado = await getEstadoEmpleadoBaja();
 
-        const valores = [empleadoBaja, parametros.id];
+            const deactivateQuery = `
+                UPDATE empleado
+                SET id_estadoempleado = $1
+                WHERE id = $2
+            `;
 
-        await client.query(texto, valores);
+            const deactivateResult = await client.query(deactivateQuery, [
+                id_estadoempleado,
+                parametros.id,
+            ]);
 
-        return;
-    } catch (error) {
-        console.error("Error en deleteEmpleado: ", error);
-        throw error;
-    };
+            checkRowsAffected(deactivateResult, 'Empleado', { id: parametros.id });
+        },
+
+        parametros
+    );
 };//
 
 export async function editEmpleado(parametros: editEmpleadoParametros) {
-    try {
+    return executeQuery(
+        'editEmpleado',
+        async () => {
 
-        const texto = `
-            UPDATE "empleado"
-            SET nombreapellido = $1, legajo = $2, id_reloj = $3, id_tipoempleado = $4, id_turno = $5, id_proyecto = $6
-            WHERE id = $7
-        `;
+            const checkQuery = `
+                SELECT id FROM empleado
+                WHERE legajo = $1 AND id != $2
+            `;
 
-        const valores = [parametros.nombre, parametros.legajo, parametros.id_reloj, parametros.id_tipoempleado, parametros.id_turno, parametros.id_proyecto, parametros.id];
+            const checkResult = await client.query(checkQuery, [
+                parametros.legajo,
+                parametros.id,
+            ]);
 
-        await client.query(texto, valores);
+            if (checkResult.rows.length > 0) {
+                throw createConflictError(
+                    'Legajo ya existe',
+                    { serie: parametros.legajo, id: parametros.id }
+                );
+            };
 
-        return;
-    } catch (error) {
-        console.error("Error en editEmpleado: ", error);
-        throw error;
-    };
+            const updateQuery = `
+                UPDATE empleado
+                SET nombreapellido = $1, legajo = $2, id_reloj = $3, id_tipoempleado = $4, id_turno = $5, id_proyecto = $6
+                WHERE id = $7
+            `;
+
+            const updateResult = await client.query(updateQuery, [
+                parametros.nombre,
+                parametros.legajo,
+                parametros.id_reloj,
+                parametros.id_tipoempleado,
+                parametros.id_turno,
+                parametros.id_proyecto,
+                parametros.id
+            ]);
+
+            checkRowsAffected(updateResult, 'Empleado', { id: parametros.id });
+        },
+
+        parametros
+    );
 };//
 
 export async function getEmpleadoByRelojProyecto(parametros: getEmpleadoByRelojProyectoParametros) {
-    try {
-        const id_prosoft = await getTipoImportacionProSoft();
+    return executeQuery(
+        'getEmpleadoByRelojProyecto',
+        async () => {
 
-        let texto = `
-            SELECT id
-            FROM empleado
-            WHERE id_reloj = $1 
-        `;
+            const id_tipoimportacion = await getTipoImportacionProSoft();
 
-        const proyecto = ' AND id_proyecto = $2';
+            let getQuery = `
+                SELECT id FROM empleado
+                WHERE id_reloj = $1
+            `;
 
-        const valores = [parametros.id_reloj];
+            const valores = [parametros.id_reloj]
 
-        if (parametros.id_tipoimportacion === id_prosoft) {
-            texto += proyecto;
-            valores.push(parametros.id_proyecto);
-        };
+            if (parametros.id_tipoimportacion === id_tipoimportacion) {
+                getQuery += ' AND id_proyecto = $2 ';
+                valores.push(parametros.id_proyecto);
+            };
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, valores);
+            
+            return getResult;
+        },
 
-        return resultado;
-    } catch (error) {
-        console.error("Error en getEmpleadoByRelojProyecto: ", error);
-        throw error;
-    };
+        parametros
+    );
 };//
 
 export async function getEmpleadoProyecto(parametros: getEmpleadoProyectoParametros) {
-    try {
-        const texto = `
-            SELECT id_proyecto
-            FROM empleado
-            WHERE id = $1
-        `;
+    return executeQuery(
+        'getEmpleadoProyecto',
+        async () => {
 
-        const valores = [parametros.id];
+            const getQuery = `
+                SELECT id_proyecto FROM empleado
+                WHERE id = $1
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.id
+            ]);
 
-        return resultado.rows[0].id_proyecto;
-    } catch (error) {
-        console.error("Error en getEmpleadoProyecto: ", error);
-        throw error;
-    };
+            return getResult.rows[0].id_proyecto;
+        },
+
+        parametros
+    );
 };//
 
 export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmpleadosNocturnosParametros) {
-    try {
-        const id_turno = await getTurnoNocturno();
+    return executeQuery(
+        'getProyectoEmpleadosNocturnos',
+        async () => {
 
-        const texto = `
-            SELECT id_reloj
-            FROM empleado
-            WHERE id_proyecto = $1
-            AND id_turno = $2
-        `;
+            const id_turno = await getTurnoNocturno();
 
-        const valores = [parametros.id_proyecto, id_turno];
+            const getQuery = `
+                SELECT id_reloj FROM empleado
+                WHERE id_proyecto = $1 
+                    AND id_turno = $2
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.id_proyecto,
+                id_turno
+            ]);
 
-        return resultado.rows.map(row => String(row.id_reloj));
-    } catch (error) {
-        console.error("Error en getProyectoEmpleadosNocturnos: ", error);
-        throw error;
-    };
-};
+            return getResult.rows.map(row => String(row.id_reloj));
+        },
 
-export async function getEmpleadosPresentes() {
-    try {
-        const valoresBase: any = [];
+        parametros
+    );
+};//
 
-        const valoresPrincipal = [...valoresBase];
+export async function getEmpleadosAsistencia() {
+    return executeQuery(
+        'getEmpleadosAsistencia',
+        async () => {
 
-        let texto = `
-            SELECT DISTINCT
-                e.id,
-                e.nombreapellido AS nombre,
-                e.id_reloj,
-                te.nombre AS tipoempleado,
-                te.id AS id_tipoempleado
-            FROM "empleado" e
-            LEFT JOIN "tipoempleado" te ON e.id_tipoempleado = te.id
-            LEFT JOIN "jornada" j ON j.id_empleado = e.id
-        `;
+            const getQuery = `
+                SELECT DISTINCT
+                    e.id,
+                    e.nombreapellido AS nombre,
+                    e.id_reloj,
+                    te.nombre AS tipoempleado,
+                    te.id AS id_tipoempleado
+                FROM empleado e
+                LEFT JOIN tipoempleado te ON e.id_tipoempleado = te.id
+                LEFT JOIN jornada j ON j.id_empleado = e.id
+            `;
 
-        const resultado = await client.query(texto, valoresPrincipal);
+            const getResult = await client.query(getQuery);
 
-        let textoConteo = `
-            SELECT COUNT(*) AS total
-            FROM "empleado" e
-        `;
-
-        const resultadoConteo = await client.query(textoConteo, valoresBase);
-
-        return {
-            empleados: resultado.rows,
-            totalEmpleados: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getEmpleadosPresentes: ", error);
-        throw error;
-    };
+            return {
+                empleados: getResult.rows
+            };
+        }
+    );
 };//
 
 export async function getAllEmpleados() {
-    try {
+    return executeQuery(
+        'getAllEmpleados',
+        async () => {
 
-        const texto = `
-            SELECT DISTINCT 
-                id,
-                id_reloj
-            FROM empleado
-        `;
+            const getQuery = `
+                SELECT DISTINCT
+                    id,
+                    id_reloj
+                FROM empleado
+            `;
 
-        const respuesta = await client.query(texto);
+            const getResult = await client.query(getQuery);
 
-        return respuesta.rows;
-    } catch (error) {
-        console.error("Error en getAllEmpleados: ", error);
-        throw error;
-    };
-};//
-
-export async function getAusentes(parametros: getAusentesParametros) {
-    try {
-         
-        const nomina = await getNominaProyecto({ id_proyecto: parametros.filtroProyecto });
-
-        const normalizar = (id: string) => Number(id.slice(2, -1));
-
-        const presentes = await getPresentesGlobal(parametros);
-
-        const ids_presentes = new Set(presentes.presentes.map(r => Number(r.id_reloj)));
-        
-        const ausentes = nomina.filter(r => !ids_presentes.has(normalizar(r.id_empleado)));
-
-        const ids_ausentes = ausentes.map(r => normalizar(r.id_empleado));
-        
-        return ids_ausentes;
-    } catch (error) {
-        console.error("Error en getAusentes: ", error);
-        throw error;
-    };
+            return getResult.rows;
+        }
+    );
 };//

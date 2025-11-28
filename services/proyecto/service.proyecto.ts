@@ -3,189 +3,252 @@
 import { createProyectoParametros, deactivateProyectoParametros, editProyectoParametros, getProyectoByNominaParametros, getProyectoModalidadTrabajoParametros, getProyectoNominaParametros, getProyectosABMParametros } from "@/lib/types/proyecto";
 import { db } from "@vercel/postgres";
 import { getEstadoParametroActivo, getEstadoParametroBaja } from "../estadoparametro/service.estadoparametro";
+import { checkRowsAffected, executeQuery } from "@/lib/utils/database";
+import { createConflictError } from "@/lib/utils/error";
 
 const client = db;
 
 export async function getProyectos() {
-    try {
-        const id_parametrobaja = await getEstadoParametroBaja();
+    return executeQuery(
+        'getProyectos',
+        async () => {
 
-        const texto = `
-            SELECT 
-                id, 
-                nombre
-            FROM proyecto
-            WHERE id_estadoparametro != $1
-        `;
+            const id_estadoparametro = await getEstadoParametroBaja();
 
-        const valores = [id_parametrobaja];
+            const getQuery = `
+                SELECT * FROM proyecto
+                WHERE id_estadoparametro != $1
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                id_estadoparametro
+            ]);
 
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getProyectos: ", error);
-        throw error;
-    };
-};
+            return getResult.rows
+        }
+    );
+};//
 
 export async function getProyectosABM(parametros: getProyectosABMParametros) {
-    try {
-        const offset = (parametros.pagina) * parametros.filasPorPagina;
+    return executeQuery(
+        'getProyectosABM',
+        async () => {
 
-        const texto = `
-            SELECT 
-                p.id, 
-                p.nombre,
-                mt.nombre AS modalidadtrabajo,
-                ep.nombre AS estadoparametro,
-                p.id_modalidadtrabajo
-            FROM proyecto p
-            JOIN modalidadtrabajo mt ON p.id_modalidadtrabajo = mt.id
-            JOIN estadoparametro ep ON p.id_estadoparametro = ep.id
-            LIMIT $1 OFFSET $2
-        `;
+            const offset = (parametros.pagina) * parametros.filasPorPagina;
 
-        const valores = [parametros.filasPorPagina, offset];
+            const getQuery = `
+                SELECT 
+                    p.id, 
+                    p.nombre,
+                    mt.nombre AS modalidadtrabajo,
+                    ep.nombre AS estadoparametro,
+                    p.id_modalidadtrabajo
+                FROM proyecto p
+                JOIN modalidadtrabajo mt ON p.id_modalidadtrabajo = mt.id
+                JOIN estadoparametro ep ON p.id_estadoparametro = ep.id
+                LIMIT $1 OFFSET $2
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const countQuery = `
+                SELECT COUNT(DISTINCT id) AS total
+                FROM proyecto
+            `;
 
-        let textoConteo = `
-            SELECT COUNT(DISTINCT id) AS total
-            FROM "proyecto"
-        `;
+            const getResult = await client.query(getQuery, [
+                parametros.filasPorPagina,
+                offset
+            ]);
 
-        const resultadoConteo = await client.query(textoConteo);
+            const countResult = await client.query(countQuery);
 
-        return {
-            proyectos: resultado.rows,
-            totalProyectos: resultadoConteo.rows[0].total,
-        };
-    } catch (error) {
-        console.error("Error en getProyectos: ", error);
-        throw error;
-    };
-};
+            return {
+                proyectos: getResult.rows,
+                totalProyectos: countResult.rows[0].total,
+            };
+        },
+
+        parametros
+    );
+};//
 
 export async function getProyectoModalidadTrabajo(parametros: getProyectoModalidadTrabajoParametros) {
-    try {
-        const texto = `
-            SELECT id_modalidadtrabajo AS id
-            FROM proyecto
-            WHERE id = $1
-        `;
+    return executeQuery(
+        'getProyectosABM',
+        async () => {
 
-        const valores = [parametros.id_proyecto];
+            const getQuery = `
+                SELECT id_modalidadtrabajo AS id
+                FROM proyecto
+                WHERE id = $1
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [
+                parametros.id_proyecto
+            ]);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getProyectoModalidadTrabajo: ", error);
-        throw error;
-    };
-};
+            return getResult.rows[0].id;
+        },
+
+        parametros
+    );
+};//
 
 export async function deactivateProyecto(parametros: deactivateProyectoParametros) {
-    try {
-        const id_baja = await getEstadoParametroBaja();
+    return executeQuery(
+        'deactivateProyecto',
+        async () => {
 
-        const texto = `
-            UPDATE "proyecto"
-            SET id_estadoparametro = $2
-            WHERE id = $1
-                AND id_estadoparametro != $2
-        `;
+            const id_estadoparametro = await getEstadoParametroBaja();
 
-        const valores = [parametros.id_proyecto, id_baja];
+            const deactivateQuery = `
+                UPDATE proyecto
+                SET id_estadoparametro = $2
+                WHERE id = $1
+                    AND id_estadoparametro != $2
+            `;
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en deactivateProyecto: ", error);
-        throw error;
-    };
-};
+            const deactivateResult = await client.query(deactivateQuery, [
+                parametros.id_proyecto,
+                id_estadoparametro
+            ]);
+
+            checkRowsAffected(deactivateResult, 'Proyecto', { id: parametros.id_proyecto });
+        },
+
+        parametros
+    );
+};//
 
 export async function editProyecto(parametros: editProyectoParametros) {
-    try {
-        const id_baja = await getEstadoParametroBaja();
+    return executeQuery(
+        'editProyecto',
+        async () => {
 
-        const texto = `
-            UPDATE "proyecto"
-            SET nombre = $1, id_modalidadtrabajo = $2
-            WHERE id = $3
-                AND id_estadoparametro != $4
-        `;
-        const valores = [parametros.nombre, parametros.id_modalidadtrabajo, parametros.id_proyecto, id_baja];
+            const id_estadoparametro = await getEstadoParametroBaja();
 
-        await client.query(texto, valores);
+            const checkQuery = `
+                SELECT id FROM proyecto 
+                WHERE nombre = $1 AND id != $2 AND id_estadoparametro != $3
+            `;
 
-        return;
-    } catch (error) {
-        console.error("Error en editProyecto: ", error);
-        throw error;
-    };
-};
+            const checkResult = await client.query(checkQuery, [
+                parametros.nombre,
+                parametros.id_proyecto,
+                id_estadoparametro
+            ]);
+
+            if (checkResult.rows.length > 0) {
+                throw createConflictError(
+                    'Proyecto ya existe con ese nombre',
+                    { nombre: parametros.nombre, id: parametros.id_proyecto }
+                );
+            };
+
+            const updateQuery = `
+                UPDATE "proyecto"
+                SET nombre = $1, id_modalidadtrabajo = $2
+                WHERE id = $3
+                    AND id_estadoparametro != $4
+            `;
+
+            const updateResult = await client.query(updateQuery, [
+                parametros.nombre,
+                parametros.id_modalidadtrabajo,
+                parametros.id_proyecto,
+                id_estadoparametro
+            ]);
+
+            checkRowsAffected(updateResult, 'Proyecto', { id: parametros.id_proyecto });
+        },
+
+        parametros
+    );
+};//
 
 export async function createProyecto(parametros: createProyectoParametros) {
-    try {
+    return executeQuery(
+        'createProyecto',
+        async () => {
 
-        const id_estadoparametro = await getEstadoParametroActivo();
+            const id_estadoparametro = await getEstadoParametroActivo();
 
-        const texto = `
-                INSERT INTO "proyecto" (nombre, id_modalidadtrabajo, id_estadoparametro)
+            const checkQuery = `
+                SELECT id FROM proyecto
+                WHERE nombre = $1
+            `;
+
+            const checkResult = await client.query(checkQuery, [
+                parametros.nombre
+            ]);
+
+            if (checkResult.rows.length > 0) {
+                throw createConflictError(
+                    'Proyecto ya existe',
+                    { nombre: parametros.nombre }
+                );
+            };
+
+            const insertQuery = `
+                INSERT INTO proyecto (nombre, id_modalidadtrabajo, id_estadoparametro)
                 VALUES ($1, $2, $3)
             `;
 
-        const valores = [parametros.nombre, parametros.id_modalidadtrabajo, id_estadoparametro];
+            const insertResult = await client.query(insertQuery, [
+                parametros.nombre,
+                parametros.id_modalidadtrabajo,
+                id_estadoparametro
+            ]);
 
-        await client.query(texto, valores);
-    } catch (error) {
-        console.error("Error en createProyecto: ", error);
-        throw error;
-    };
-};
+            checkRowsAffected(insertResult, 'Proyecto');
+        },
+
+        parametros
+    );
+};//
 
 export async function getProyectoNomina(parametros: getProyectoNominaParametros) {
-    try {
+    return executeQuery(
+        'getProyectoNomina',
+        async () => {
 
-        const texto = `
-            SELECT nomina
-            FROM proyecto
-            WHERE id = $1
-        `;
+            const getQuery = `
+                SELECT nomina FROM proyecto
+                WHERE id = $1
+            `;
 
-        const valores = [parametros.id_proyecto];
+            const getResult = await client.query(getQuery, [
+                parametros.id_proyecto
+            ]);
 
-        const respuesta = await client.query(texto, valores);
+            return getResult.rows[0].nomina;
+        },
 
-        return respuesta.rows[0].nomina;
-    } catch (error) {
-        console.error("Error en getProyectoNomina: ", error);
-        throw error;
-    };
-};
+        parametros
+    );
+};//
 
 export async function getProyectoByNomina(parametros: getProyectoByNominaParametros) {
-    try {
+    return executeQuery(
+        'getProyectoByNomina',
+        async () => {
 
-        const texto = `
-            SELECT id
-            FROM proyecto
-            WHERE nomina = $1
-        `;
+            const getQuery = `
+                SELECT id
+                FROM proyecto
+                WHERE nomina = $1
+            `;
 
-        const valores = [parametros.nomina];
+            const getResult = await client.query(getQuery, [
+                parametros.nomina
+            ]);
 
-        const respuesta = await client.query(texto, valores);
+            if (!getResult || !getResult.rows || getResult.rows.length === 0) {
+                return null;
+            };
 
-        if (!respuesta || !respuesta.rows || respuesta.rows.length === 0) {
-            return null;
-        };
+            return getResult.rows[0].id;
+        },
 
-        return respuesta.rows[0].id;
-    } catch (error) {
-        console.error("Error en getProyectoByNomina: ", error);
-        throw error;
-    };
-};
+        parametros
+    );
+};//

@@ -1,74 +1,99 @@
 "use server";
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
-export async function getEstadosJornada() {
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM estadojornada
-        `;
-
-        const resultado = await client.query(texto);
-
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getEstadosJornada: ", error);
-        throw error;
-    };
-};
-
 export async function getEstadoJornadaSinValidar() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadojornada
-            WHERE nombre = 'Sin Validar'
-        `;
+    return executeQuery(
+        'getEstadoJornadaSinValidar',
+        async () => {
+            
+            const getQuery = `
+                SELECT id FROM estadojornada
+                WHERE nombre = 'Sin Validar'
+            `;
 
-        const resultado = await client.query(texto);
+            const getResult = await client.query(getQuery);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstaroJornadaSinValidar: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadojornada (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Sin Validar']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getEstadoJornadaRevision() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadojornada
-            WHERE nombre = 'Requiere Revision'
-        `;
+    return executeQuery(
+        'getEstadoJornadaRevision',
+        async () => {
+            
+            const getQuery = `
+                SELECT id FROM estadojornada
+                WHERE nombre = 'Requiere Revision'
+            `;
 
-        const resultado = await client.query(texto);
+            const getResult = await client.query(getQuery);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstaroJornadaRevision: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadojornada (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Requiere Revision']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
 
 export async function getEstadoJornadaValida() {
-    try {
-        const texto = `
-            SELECT id
-            FROM estadojornada
-            WHERE nombre = 'Validada'
-        `;
+    return executeQuery(
+        'getEstadoJornadaValida',
+        async () => {
+            
+            const getQuery = `
+                SELECT id FROM estadojornada
+                WHERE nombre = 'Validada'
+            `;
 
-        const resultado = await client.query(texto);
+            const getResult = await client.query(getQuery);
 
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getEstadoJornadaValida: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO estadojornada (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Validada']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//

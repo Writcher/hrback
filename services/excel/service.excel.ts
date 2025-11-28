@@ -7,70 +7,43 @@ import { db } from "@vercel/postgres";
 import { getEstadoImportacionIncompleta, getEstadoImportacionRevision } from "../estadoimportacion/service.estadoimportacion";
 import { insertImportacion } from "../importacion/service.importacion";
 import { getEstadoJornadaRevision, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
-import { getAñoByValor, insertAño } from "../año/service.año";
-import { getMesByMes, insertMes } from "../mes/service.mes";
-import { getQuincenaByMes, insertQuincena } from "../quincena/service.quincena";
+import { getAñoByValor } from "../año/service.año";
+import { getMesByMes } from "../mes/service.mes";
+import { getQuincenaByMes } from "../quincena/service.quincena";
 import { getEmpleadoByRelojProyecto, getProyectoEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
 import { insertJornada, recalculateJornadasEmpleado } from "../jornada/service.jornada";
 import { getFuenteMarcaControl } from "../fuentemarca/service.fuentemarca";
 import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
+import { createBackEndError } from "@/lib/utils/error";
+import { executeQuery } from "@/lib/utils/database";
 
 const client = db;
 
 export async function getMesQuincena(parametros: getMesQuincenaParametros) {
   try {
     // Año
-    let id_año: number;
-
-    const añoParametros = {
+    const id_año = await getAñoByValor({
       valor: parametros.año,
-    };
-
-    const año = await getAñoByValor(añoParametros);
-
-    if (año.rowCount === 0) {
-      id_año = await insertAño(añoParametros);
-    } else {
-      id_año = año.rows[0].valor;
-    };
+    });
 
     // Mes
-    let id_mes: number;
-
-    const mesParametros = {
+    const id_mes = await getMesByMes({
       mes: parametros.mes,
       id_año: id_año,
-    };
-
-    const mes = await getMesByMes(mesParametros);
-
-    if (mes.rowCount === 0) {
-      id_mes = await insertMes(mesParametros);
-    } else {
-      id_mes = mes.rows[0].id;
-    };
+    });
 
     // Quincena
-    let id_quincena: number;
-
     const quincenaParametros = {
       quincena: parametros.quincena,
       id_mes: id_mes,
     };
 
-    const quincena = await getQuincenaByMes(quincenaParametros);
-
-    if (quincena.rowCount === 0) {
-      id_quincena = await insertQuincena(quincenaParametros);
-    } else {
-      id_quincena = quincena.rows[0].id;
-    };
+    const id_quincena = await getQuincenaByMes(quincenaParametros);
 
     return { id_mes, id_quincena };
   } catch (error) {
-    console.error("Error en verifyExistenciaInstancias: ", error);
-    throw error;
+    throw createBackEndError('getMesQuincena');
   };
 };//
 
@@ -78,8 +51,6 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
 
   const modalidad_proyecto = await getProyectoModalidadTrabajo({ id_proyecto });
   const modalidad_corrido = await getModalidadTrabajoCorrido();
-
-  // CHANGE 1: Fetch night shift employees once at the beginning
   const empleadosNocturnosArray = await getProyectoEmpleadosNocturnos({ id_proyecto });
   const empleadosNocturnos = new Set(empleadosNocturnosArray);
 
@@ -233,9 +204,8 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
   let importacionCompleta = true;
 
   for (const [idEmpleado, data] of empleadosMap.entries()) {
-    // CHANGE 2: Check if this employee is a night shift worker
     const esEmpleadoNocturno = empleadosNocturnos.has(idEmpleado);
-    
+
     // Ordenar por fecha y hora
     const registrosOrdenados = [...data.registros].sort((a, b) => {
       return a.fechaHora.getTime() - b.fechaHora.getTime();
@@ -253,7 +223,6 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
     let registrosProcesados: { fecha: string, hora: string, tipo: string }[] = [];
     let requiresManualReview = false;
 
-    // CHANGE 3: If employee is night shift, always flag for manual review
     if (esEmpleadoNocturno) {
       requiresManualReview = true;
     };
@@ -330,7 +299,6 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
       requiresManualReview = registrosFiltrados.length % 2 !== 0;
     };
 
-    // CHANGE 4: Only validate 8-hour minimum for NON-night shift employees
     if (!requiresManualReview && !esEmpleadoNocturno && registrosProcesados.length >= 2) {
       const entrada = registrosProcesados.find(r => r.tipo === 'ENTRADA');
       const salida = registrosProcesados.find(r => r.tipo === 'SALIDA');
@@ -361,58 +329,55 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
     empleadosJornada,
     importacionCompleta
   };
-};
+};//
 
-export async function createJornadas(parametros: jornadasParametros) {
-  try {
+export async function createJornadas(parametros: jornadasParametros) { //voy por arreglar esto
+  return executeQuery(
+    'createJornadas',
+    async () => {
 
-    await client.query('BEGIN');
+      const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo, id_tipoimportacion, id_usuariocreacion } = parametros;
+      let contador = 0;
+      let fechaMemoria: Date = new Date(0);
+      let quincenaMemoria: number = 0;
+      let id_mes: number = 0;
+      let id_quincena: number = 0;
 
-    const { empleadosJornadas, id_proyecto, id_tipojornada, nombreArchivo, id_tipoimportacion, id_usuariocreacion } = parametros;
-    let contador = 0;
-    let fechaMemoria: Date = new Date(0);
-    let quincenaMemoria: number = 0;
-    let id_mes: number = 0;
-    let id_quincena: number = 0;
+      const importacion_incompleta = await getEstadoImportacionIncompleta();
+      const importacion_revision = await getEstadoImportacionRevision();
 
-    const importacion_incompleta = await getEstadoImportacionIncompleta();
-    const importacion_revision = await getEstadoImportacionRevision();
+      let id_importacion;
 
-    let id_importacion;
+      if (empleadosJornadas.importacionCompleta) {
 
-    if (empleadosJornadas.importacionCompleta) {
+        id_importacion = await insertImportacion({
+          id_estadoimportacion: importacion_revision,
+          id_proyecto: id_proyecto,
+          nombreArchivo: nombreArchivo,
+          id_tipoimportacion: id_tipoimportacion,
+          id_usuariocreacion: id_usuariocreacion,
+        });
+      } else {
 
-      const insertImportacionParametros = {
-        id_estadoimportacion: importacion_revision,
-        id_proyecto: id_proyecto,
-        nombreArchivo: nombreArchivo,
-        id_tipoimportacion: id_tipoimportacion,
-        id_usuariocreacion: id_usuariocreacion,
+        id_importacion = await insertImportacion({
+          id_estadoimportacion: importacion_incompleta,
+          id_proyecto: id_proyecto,
+          nombreArchivo: nombreArchivo,
+          id_tipoimportacion: id_tipoimportacion,
+          id_usuariocreacion: id_usuariocreacion,
+        });
       };
 
-      id_importacion = await insertImportacion(insertImportacionParametros);
-    } else {
+      const jornada_valida = await getEstadoJornadaValida();
+      const jornada_revision = await getEstadoJornadaRevision();
 
-      const insertImportacionParametros = {
-        id_estadoimportacion: importacion_incompleta,
-        id_proyecto: id_proyecto,
-        nombreArchivo: nombreArchivo,
-        id_tipoimportacion: id_tipoimportacion,
-        id_usuariocreacion: id_usuariocreacion,
-      };
+      const id_fuentemarca = await getFuenteMarcaControl();
 
+      const completa = empleadosJornadas.importacionCompleta;
 
-      id_importacion = await insertImportacion(insertImportacionParametros);
-    };
+      //
 
-    const jornada_valida = await getEstadoJornadaValida();
-    const jornada_revision = await getEstadoJornadaRevision();
-
-    const id_fuentemarca = await getFuenteMarcaControl();
-
-    const completa = empleadosJornadas.importacionCompleta;
-
-    for (const [id_reloj, { nombre, registros, requiresManualReview }] of empleadosJornadas.empleadosJornada.entries()) {
+      for (const [id_reloj, { nombre, registros, requiresManualReview }] of empleadosJornadas.empleadosJornada.entries()) {
 
       let id_empleado: number;
 
@@ -429,9 +394,9 @@ export async function createJornadas(parametros: jornadasParametros) {
         const insertEmpleadoParametros = {
           id_reloj: Number(id_reloj),
           id_proyecto: id_proyecto,
-          legajo: '' as number | '',
+          legajo: null as number | null,
           nombre: nombre,
-          id_tipoempleado: '' as number | '',
+          id_tipoempleado: null as number | null,
         };
 
         id_empleado = await insertEmpleado(insertEmpleadoParametros);
@@ -466,9 +431,7 @@ export async function createJornadas(parametros: jornadasParametros) {
           fechaMemoria = fechaObjeto;
           quincenaMemoria = quincena;
 
-          const getMesQuincenaParametros = { año, mes, quincena };
-
-          const ids = await getMesQuincena(getMesQuincenaParametros);
+          const ids = await getMesQuincena({ año, mes, quincena });
 
           id_mes = ids.id_mes;
           id_quincena = ids.id_quincena;
@@ -478,7 +441,7 @@ export async function createJornadas(parametros: jornadasParametros) {
 
         for (const jornada of jornadas) {
           if (jornada.entrada || jornada.salida) {
-            const insertJornadaParametros = {
+            await insertJornada({
               fecha: fecha,
               entrada: jornada.entrada || null,
               salida: jornada.salida || null,
@@ -492,26 +455,22 @@ export async function createJornadas(parametros: jornadasParametros) {
               id_importacion: id_importacion,
               id_fuentemarca: id_fuentemarca,
               id_usuariocreacion: id_usuariocreacion,
-            };
-
-            await insertJornada(insertJornadaParametros);
+            });
           };
         };
       };
 
-      await recalculateJornadasEmpleado({id_empleado: id_empleado});
+      await recalculateJornadasEmpleado({ id_empleado: id_empleado });
 
       contador++;
     };
 
-    await client.query('COMMIT');
-
     return { id_importacion, completa }
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error("Error en insertJornada: ", error);
-    throw error;
-  };
+    },
+
+    parametros,
+    true
+  );
 };//
 
 function emparejarEntradaSalida(registros: Array<{ tipo: string; hora: string; orden: number }>) {
@@ -809,7 +768,6 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
 
     return buffer;
   } catch (error) {
-    console.error('Error generando Excel:', error);
-    throw new Error('Error al generar el archivo Excel');
+    throw createBackEndError('generarExcel');
   };
-};
+};//

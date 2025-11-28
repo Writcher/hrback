@@ -17,7 +17,6 @@ export type getEmpleadosParametros = {
 
 export type getAusentesParametros = {
     filtroProyecto: number,
-    dispositivos: string[],
     fecha: string,
 };
 
@@ -30,13 +29,13 @@ export type getEmpleadoJornadasParametros = {
     filasPorPagina: number,
     ausencias: boolean,
     filtroTipoAusencia: number,
-};
+};//
 
 export type getEmpleadoJornadasResumenParametros = {
     id_empleado: number,
     filtroMes: number,
     filtroQuincena: number,
-};
+};//
 
 export type getJornadasResumenParametros = {
     proyecto: number,
@@ -47,9 +46,9 @@ export type getJornadasResumenParametros = {
 export type insertEmpleadoParametros = {
     id_reloj: number,
     id_proyecto: number,
-    legajo: number | '',
+    legajo: number | null,
     nombre: string,
-    id_tipoempleado: number | '',
+    id_tipoempleado: number | null,
 };
 
 export type editEmpleadoParametros = {

@@ -2,43 +2,39 @@
 
 import { db } from "@vercel/postgres";
 import { getAñoByValorParametros, insertAñoParametros } from "../../lib/types/año";
+import { executeQuery } from "@/lib/utils/database";
 
 const client = db;
 
 export async function getAñoByValor(parametros: getAñoByValorParametros) {
-    try {
-        const texto = `
-            SELECT valor
-            FROM año
-            WHERE valor = $1
-        `;
+    return executeQuery(
+        'getAñoByValor',
+        async () => {
 
-        const valores = [parametros.valor];
+            const getQuery = `
+                SELECT valor FROM año
+                WHERE valor = $1
+            `;
 
-        const resultado = await client.query(texto, valores);
+            const getResult = await client.query(getQuery, [parametros.valor]);
 
-        return resultado;
-    } catch (error) {
-        console.error("Error en getAñoByValor: ", error);
-        throw error;
-    };
-};
+            if (getResult.rows.length === 0) {
 
-export async function insertAño(parametros: insertAñoParametros) {
-    try {
-        const texto = `
-            INSERT INTO "año" (valor)
-            VALUES ($1)
-            RETURNING valor
-        `;
+                const insertQuery = `
+                    INSERT INTO año (valor)
+                    VALUES ($1)
+                    ON CONFLICT (valor) DO UPDATE SET valor = EXCLUDED.valor
+                    RETURNING valor
+                `;
 
-        const valores = [parametros.valor];
+                const insertResult = await client.query(insertQuery, [parametros.valor]);
 
-        const resultado = await client.query(texto, valores);
+                return insertResult.rows[0].valor;
+            }
 
-        return resultado.rows[0].valor;
-    } catch (error) {
-        console.error("Error en insertAño: ", error);
-        throw error;
-    };
+            return getResult.rows[0].valor;
+        },
+
+        parametros
+    );
 };

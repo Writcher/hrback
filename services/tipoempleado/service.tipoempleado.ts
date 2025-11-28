@@ -1,40 +1,54 @@
 "use server";
 
+import { executeQuery } from "@/lib/utils/database";
 import { db } from "@vercel/postgres";
 
 const client = db;
 
 export async function getTiposEmpleado(){
-    try {
-        const texto = `
-            SELECT 
-            id, 
-            nombre
-            FROM tipoempleado
-        `;
+    return executeQuery(
+        'getTiposEmpleado',
+        async () => {
 
-        const resultado = await client.query(texto);
-        
-        return resultado.rows;
-    } catch (error) {
-        console.error("Error en getTiposEmpleado: ", error);
-        throw error;
-    };
-};
+            const getQuery = `
+                SELECT id, nombre
+                FROM tipoempleado
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            return getResult.rows
+        }
+    );
+};//
 
 export async function getTipoEmpleadoMensualizado(){
-    try {  
-        const texto = `
-            SELECT id
-            FROM tipoempleado
-            WHERE nombre = 'Mensualizado'
-        `;
+    return executeQuery(
+        'getTipoEmpleadoMensualizado',
+        async () => {
 
-        const resultado = await client.query(texto);
-        
-        return resultado.rows[0].id;
-    } catch (error) {
-        console.error("Error en getTiposEmpleado: ", error);
-        throw error;
-    };
-};
+            const getQuery = `
+                SELECT id FROM tipoempleado
+                WHERE nombre = 'Mensualizado'
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO tipoempleado (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Mensualizado']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
