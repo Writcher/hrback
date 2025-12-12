@@ -2,7 +2,7 @@
 
 import { getEmpleadoJornadasParametros, getEmpleadoJornadasResumenParametros, getJornadasResumenParametros } from "@/lib/types/empleado";
 import { getJornadasByImportacionParametros } from "@/lib/types/importacion";
-import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros, createAbsencesParametros, recalculateJornadasEmpleadoParametros } from "@/lib/types/jornada";
+import { deleteJornadaParametros, createJornadaParametros, updateJornadaParametros, validateJornadaParametros, insertJornadaParametros, getJornadaAusenciaParametros, createAbsencesParametros, recalculateJornadasEmpleadoParametros, deleteAbsenceProSoftParametros } from "@/lib/types/jornada";
 import { db } from "@vercel/postgres";
 import { getMesQuincena } from "../excel/service.excel";
 import { getEstadoJornadaSinValidar, getEstadoJornadaValida } from "../estadojornada/service.estadojornada";
@@ -676,6 +676,43 @@ export async function getJornadaAusencia(parametros: getJornadaAusenciaParametro
             return getResult.rows[0].id_ausencia;
         },
 
+        parametros
+    );
+};
+{}
+export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParametros) {
+    return executeQuery(
+        'deleteAbsenceProSoft',
+        async () => {
+
+            const id_tipojornada = await getTipoJornadaAusencia();
+
+            const getQuery = `
+                SELECT id FROM jornada
+                WHERE fecha = $1 AND id_tipojornada = $2 AND id_empleado = $3
+            `;
+
+            const getResult = await client.query(getQuery, [
+                parametros.fecha,
+                id_tipojornada,
+                parametros.id_empleado
+            ]);
+
+            if (getResult.rows.length > 0) {
+
+                const deleteQuery = `
+                    DELETE FROM jornada 
+                    WHERE id = $1
+                `;
+
+                const deleteResult = await client.query(deleteQuery, [
+                    getResult.rows[0].id
+                ]);
+
+                checkRowsAffected(deleteResult, 'Jornada', { id: getResult.rows[0].id });
+            };
+        },
+        
         parametros
     );
 };

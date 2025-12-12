@@ -74,6 +74,11 @@ export type createAbsencesParametros = {
     id_importacion: number,
 };
 
+export type deleteAbsenceProSoftParametros = {
+    fecha: string,
+    id_empleado: number,
+};
+
 export type recalculateJornadasEmpleadoParametros = {
     id_empleado: number
 };

@@ -51,6 +51,7 @@ export async function getImportaciones(parametros: getImportacionesParametros) {
                 JOIN usuario u ON i.id_usuariocreacion = u.id
                 JOIN proyecto p ON i.id_proyecto = p.id
                 ${filtro}
+                ORDER BY i.id DESC
                 ${limite}
             `;
 

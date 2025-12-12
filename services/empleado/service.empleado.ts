@@ -256,19 +256,12 @@ export async function getEmpleadoByRelojProyecto(parametros: getEmpleadoByRelojP
         'getEmpleadoByRelojProyecto',
         async () => {
 
-            const id_tipoimportacion = await getTipoImportacionProSoft();
-
             let getQuery = `
                 SELECT id FROM empleado
                 WHERE id_reloj = $1
             `;
 
             const valores = [parametros.id_reloj]
-
-            if (parametros.id_tipoimportacion === id_tipoimportacion) {
-                getQuery += ' AND id_proyecto = $2 ';
-                valores.push(parametros.id_proyecto);
-            };
 
             const getResult = await client.query(getQuery, valores);
             

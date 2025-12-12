@@ -11,12 +11,13 @@ import { getAñoByValor } from "../año/service.año";
 import { getMesByMes } from "../mes/service.mes";
 import { getQuincenaByMes } from "../quincena/service.quincena";
 import { getEmpleadoByRelojProyecto, getProyectoEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
-import { insertJornada, recalculateJornadasEmpleado } from "../jornada/service.jornada";
+import { deleteAbsenceProSoft, insertJornada, recalculateJornadasEmpleado } from "../jornada/service.jornada";
 import { getFuenteMarcaControl } from "../fuentemarca/service.fuentemarca";
 import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
 import { createBackEndError } from "@/lib/utils/error";
 import { executeQuery } from "@/lib/utils/database";
+import { getTipoImportacionProSoft } from "../tipoimportacion/service.tipoimportacion";
 
 const client = db;
 
@@ -343,6 +344,8 @@ export async function createJornadas(parametros: jornadasParametros) { //voy por
       let id_mes: number = 0;
       let id_quincena: number = 0;
 
+      const id_importacionProSoft = await getTipoImportacionProSoft();
+
       const importacion_incompleta = await getEstadoImportacionIncompleta();
       const importacion_revision = await getEstadoImportacionRevision();
 
@@ -441,6 +444,15 @@ export async function createJornadas(parametros: jornadasParametros) { //voy por
 
         for (const jornada of jornadas) {
           if (jornada.entrada || jornada.salida) {
+
+            if (parametros.id_tipoimportacion === id_importacionProSoft){
+              
+              await deleteAbsenceProSoft({
+                fecha: fecha,
+                id_empleado: id_empleado
+              });
+            };
+
             await insertJornada({
               fecha: fecha,
               entrada: jornada.entrada || null,

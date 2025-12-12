@@ -145,12 +145,14 @@ export async function getAusentesProyecto(parametros: getAusentesParametros) {
             const proy = await getProyectoNomina({ id_proyecto: parametros.filtroProyecto });
 
             const getQuery = `
-                SELECT DISTINCT CAST(SUBSTRING(n.[dni_cuil], 3, LEN(n.[dni_cuil]) - 3) AS INT) AS [id_empleado]
+                SELECT DISTINCT CAST(n.[dni] AS INT) AS [id_empleado]
                 FROM [control_de_accesos].[dbo].[nomina] n
-                WHERE n.[ESTADO] = 'ACTIVO'
-                    AND n.[proy] = @1
+                WHERE 
+                    (ingreso IS NULL OR GETDATE() >= ingreso)
+                    AND (egreso IS NULL OR GETDATE() <= egreso)
+                    AND n.[proyecto] = @1
                     AND n.[apellido] NOT LIKE '%GARIN ODRIOZOLA%'
-                    AND CAST(SUBSTRING(n.[dni_cuil], 3, LEN(n.[dni_cuil]) - 3) AS INT) NOT IN (
+                    AND CAST(n.[dni] AS INT) NOT IN (
                         SELECT DISTINCT [id_empleado]
                         FROM [control_de_accesos].[dbo].[registros_acceso]
                         WHERE [fecha_acceso] = @2
@@ -176,64 +178,81 @@ export async function syncNomina() {
     return executeQuery(
         'syncNomina',
         async () => {
-
             const pool = await getConnection();
-
+            
             const getQuery = `
-                SELECT DISTINCT CAST(SUBSTRING([dni_cuil], 3, LEN([dni_cuil]) - 3) AS INT) AS [id_reloj], [legajo], [apellido], [nombre], [proy]
+                SELECT DISTINCT CAST([dni] AS INT) AS [id_reloj], [legajo], [apellido], [nombre], [proyecto], [convenio]
                 FROM [control_de_accesos].[dbo].[nomina]
-                WHERE [estado] = 'ACTIVO'
+                WHERE 
+                    (ingreso IS NULL OR GETDATE() >= ingreso)
+                    AND (egreso IS NULL OR GETDATE() <= egreso)
                     AND [apellido] NOT LIKE '%GARIN ODRIOZOLA%'
             `;
-
             const getResult = await pool.request().query(getQuery);
 
             const empleados = await getAllEmpleados();
+
             const empleadosMap = new Map(empleados.map(empleado => [empleado.id_reloj, empleado]));
 
             const nomina = new Map();
-
             getResult.recordset.forEach(fila => {
                 nomina.set(fila.id_reloj, {
                     legajo: fila['legajo'],
                     apellido: fila['apellido'],
                     nombre: fila['nombre'],
-                    proyecto: fila['proy']
+                    proyecto: fila['proyecto'],
+                    convenio: fila['convenio']
                 });
             });
-
             const ids_reloj = new Set(empleados.map(empleado => empleado.id_reloj));
+
+            const id_tipoempleado = await getTipoEmpleadoMensualizado();
+            const id_estadoempleado = await getEstadoEmpleadoActivo();
 
             const updatePromises: Promise<QueryResult<any>>[] = [];
             const insertPromises: Promise<QueryResult<any>>[] = [];
 
             for (const [id_reloj, data] of nomina.entries()) {
                 if (ids_reloj.has(id_reloj)) {
-
                     const empleado = empleadosMap.get(id_reloj);
-
-                    const updateQuery = `
-                        UPDATE empleado
-                        SET legajo = $1
-                        WHERE id = $2
-                    `;
-
-                    updatePromises.push(client.query(updateQuery, [data.legajo, empleado.id]))
-
+                    const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
+                    
+                    if (id_proyecto === null) continue;
+                    
+                    const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
+                    
+                    let updateQuery: string;
+                    let updateParams: any[];
+                    
+                    if (data.convenio === 'FUERA DE CONVENIO') {
+                        updateQuery = `
+                            UPDATE empleado
+                            SET legajo = $1, nombreapellido = $2, id_proyecto = $3, id_tipoempleado = $4
+                            WHERE id = $5
+                        `;
+                        updateParams = [data.legajo, nombreapellido, id_proyecto, id_tipoempleado, empleado.id];
+                    } else {
+                        updateQuery = `
+                            UPDATE empleado
+                            SET legajo = $1, nombreapellido = $2, id_proyecto = $3
+                            WHERE id = $4
+                        `;
+                        updateParams = [data.legajo, nombreapellido, id_proyecto, empleado.id];
+                    }
+                    
+                    updatePromises.push(client.query(updateQuery, updateParams));
+                    
                 } else {
-
                     const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
 
                     if (id_proyecto === null) continue;
 
-                    const id_estadoempleado = await getEstadoEmpleadoActivo();
                     const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
 
                     const insertQuery = ` 
                         INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado)
                         VALUES ($1, $2, $3, $4, $5)
                     `;
-
                     insertPromises.push(
                         client.query(insertQuery, [
                             nombreapellido,
@@ -243,16 +262,13 @@ export async function syncNomina() {
                             id_estadoempleado
                         ])
                     );
-
-                };
-            };
-
+                }
+            }
             await Promise.allSettled([...updatePromises, ...insertPromises]);
-
             console.log('Sync completed.')
         }
     );
-};//
+}
 
 export async function procesarMarcasEmpleados({ registros, id_proyecto }: { registros: any[], id_proyecto: number }): Promise<ResultadoProcesado> {
 
