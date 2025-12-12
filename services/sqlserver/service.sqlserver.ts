@@ -9,7 +9,7 @@ import { db, QueryResult } from "@vercel/postgres";
 import { EmpleadoJornada, getMarcasSQLServerParametros, getPresentesProyectoParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
 import { getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 import { executeQuery } from "@/lib/utils/database";
-import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
+import { getTipoEmpleadoJornalero, getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
 import { getAusentesParametros } from "@/lib/types/empleado";
 
 const client = db;
@@ -179,7 +179,7 @@ export async function syncNomina() {
         'syncNomina',
         async () => {
             const pool = await getConnection();
-            
+
             const getQuery = `
                 SELECT DISTINCT CAST([dni] AS INT) AS [id_reloj], [legajo], [apellido], [nombre], [proyecto], [convenio]
                 FROM [control_de_accesos].[dbo].[nomina]
@@ -206,7 +206,8 @@ export async function syncNomina() {
             });
             const ids_reloj = new Set(empleados.map(empleado => empleado.id_reloj));
 
-            const id_tipoempleado = await getTipoEmpleadoMensualizado();
+            const id_mensualizado = await getTipoEmpleadoMensualizado();
+            const id_jornalero = await getTipoEmpleadoJornalero();
             const id_estadoempleado = await getEstadoEmpleadoActivo();
 
             const updatePromises: Promise<QueryResult<any>>[] = [];
@@ -216,51 +217,60 @@ export async function syncNomina() {
                 if (ids_reloj.has(id_reloj)) {
                     const empleado = empleadosMap.get(id_reloj);
                     const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
-                    
+
                     if (id_proyecto === null) continue;
-                    
+
                     const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
-                    
+
                     let updateQuery: string;
                     let updateParams: any[];
-                    
+
                     if (data.convenio === 'FUERA DE CONVENIO') {
+
                         updateQuery = `
                             UPDATE empleado
                             SET legajo = $1, nombreapellido = $2, id_proyecto = $3, id_tipoempleado = $4
                             WHERE id = $5
                         `;
-                        updateParams = [data.legajo, nombreapellido, id_proyecto, id_tipoempleado, empleado.id];
+                        updateParams = [data.legajo, nombreapellido, id_proyecto, id_mensualizado, empleado.id];
                     } else {
+
                         updateQuery = `
                             UPDATE empleado
-                            SET legajo = $1, nombreapellido = $2, id_proyecto = $3
-                            WHERE id = $4
+                            SET legajo = $1, nombreapellido = $2, id_proyecto = $3, id_tipoempleado = $4
+                            WHERE id = $6
                         `;
-                        updateParams = [data.legajo, nombreapellido, id_proyecto, empleado.id];
-                    }
-                    
+                        updateParams = [data.legajo, nombreapellido, id_proyecto, id_jornalero, empleado.id];
+                    };
+
                     updatePromises.push(client.query(updateQuery, updateParams));
-                    
+
                 } else {
                     const id_proyecto = await getProyectoByNomina({ nomina: data.proyecto });
 
                     if (id_proyecto === null) continue;
 
-                    const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
+                    const nombreapellido = `${data.apellido} ${data.nombre}`.trim();
 
-                    const insertQuery = ` 
-                        INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado)
-                        VALUES ($1, $2, $3, $4, $5)
-                    `;
+                    let insertQuery: string;
+                    let insertParams: any[];
+
+                    if (data.convenio === 'FUERA DE CONVENIO') {
+                        insertQuery = `
+                            INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado, id_tipoempleado)
+                            VALUES ($1, $2, $3, $4, $5, $6)
+                        `;
+                        insertParams = [nombreapellido, id_reloj, data.legajo, id_proyecto, id_estadoempleado, id_mensualizado];
+                    } else {
+                        insertQuery = `
+                            INSERT INTO empleado (nombreapellido, id_reloj, legajo, id_proyecto, id_estadoempleado, id_tipoempleado)
+                            VALUES ($1, $2, $3, $4, $5, $6)
+                        `;
+                        insertParams = [nombreapellido, id_reloj, data.legajo, id_proyecto, id_estadoempleado, id_jornalero];
+                    };
+
                     insertPromises.push(
-                        client.query(insertQuery, [
-                            nombreapellido,
-                            id_reloj,
-                            data.legajo,
-                            id_proyecto,
-                            id_estadoempleado
-                        ])
+                        client.query(insertQuery, insertParams)
                     );
                 }
             }

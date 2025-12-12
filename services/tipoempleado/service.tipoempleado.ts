@@ -52,3 +52,34 @@ export async function getTipoEmpleadoMensualizado(){
         }
     );
 };//
+
+export async function getTipoEmpleadoJornalero(){
+    return executeQuery(
+        'getTipoEmpleadoJornalero',
+        async () => {
+
+            const getQuery = `
+                SELECT id FROM tipoempleado
+                WHERE nombre = 'Jornalero'
+            `;
+
+            const getResult = await client.query(getQuery);
+
+            if (getResult.rows.length === 0) {
+
+                const insertQuery = `
+                    INSERT INTO tipoempleado (nombre)
+                    VALUES ($1)
+                    ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+                    RETURNING id
+                `;
+
+                const insertResult = await client.query(insertQuery, ['Jornalero']);
+
+                return insertResult.rows[0].id;
+            };
+
+            return getResult.rows[0].id;
+        }
+    );
+};//
