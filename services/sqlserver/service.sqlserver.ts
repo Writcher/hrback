@@ -220,7 +220,7 @@ export async function syncNomina() {
 
                     if (id_proyecto === null) continue;
 
-                    const nombreapellido = `${data.nombre} ${data.apellido}`.trim();
+                    const nombreapellido = `${data.apellido} ${data.nombre}`.trim();
 
                     let updateQuery: string;
                     let updateParams: any[];
@@ -238,7 +238,7 @@ export async function syncNomina() {
                         updateQuery = `
                             UPDATE empleado
                             SET legajo = $1, nombreapellido = $2, id_proyecto = $3, id_tipoempleado = $4
-                            WHERE id = $6
+                            WHERE id = $5
                         `;
                         updateParams = [data.legajo, nombreapellido, id_proyecto, id_jornalero, empleado.id];
                     };
@@ -278,7 +278,7 @@ export async function syncNomina() {
             console.log('Sync completed.')
         }
     );
-}
+};
 
 export async function procesarMarcasEmpleados({ registros, id_proyecto }: { registros: any[], id_proyecto: number }): Promise<ResultadoProcesado> {
 
