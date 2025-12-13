@@ -617,7 +617,7 @@ export async function createJornada(parametros: createJornadaParametros) {
                 };
             };
 
-            await recalculateJornadasEmpleado({ id_empleado: parametros.id_empleado }); 
+            await recalculateJornadasEmpleado({ id_empleado: parametros.id_empleado });
         },
 
         parametros,
@@ -679,7 +679,7 @@ export async function getJornadaAusencia(parametros: getJornadaAusenciaParametro
         parametros
     );
 };
-{}
+{ }
 export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParametros) {
     return executeQuery(
         'deleteAbsenceProSoft',
@@ -688,7 +688,7 @@ export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParam
             const id_tipojornada = await getTipoJornadaAusencia();
 
             const getQuery = `
-                SELECT id FROM jornada
+                SELECT id_ausencia, id FROM jornada
                 WHERE fecha = $1 AND id_tipojornada = $2 AND id_empleado = $3
             `;
 
@@ -701,18 +701,28 @@ export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParam
             if (getResult.rows.length > 0) {
 
                 const deleteQuery = `
-                    DELETE FROM jornada 
+                    DELETE FROM ausencia 
                     WHERE id = $1
                 `;
 
                 const deleteResult = await client.query(deleteQuery, [
+                    getResult.rows[0].id_ausencia
+                ]);
+
+                const deleteQuery1 = `
+                    DELETE FROM jornada 
+                    WHERE id = $1
+                `;
+
+                const deleteResult1 = await client.query(deleteQuery1, [
                     getResult.rows[0].id
                 ]);
 
-                checkRowsAffected(deleteResult, 'Jornada', { id: getResult.rows[0].id });
+                checkRowsAffected(deleteResult, 'Ausencia', { id: getResult.rows[0].id_ausencia });
+                checkRowsAffected(deleteResult1, 'Jornada', { id: getResult.rows[0].id });
             };
         },
-        
+
         parametros
     );
 };
