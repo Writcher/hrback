@@ -231,6 +231,17 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
                 valoresBase.push(parametros.quincena);
             };
 
+            if (parametros.proyecto !== 0) {
+                filtro += `
+                    AND EXISTS (
+                        SELECT 1
+                        FROM "jornada" jp
+                        WHERE jp.id_empleado = j.id_empleado
+                        AND jp.id_proyecto = $${valoresBase.length + 1}
+                    )`;
+                valoresBase.push(parametros.proyecto);
+            };
+
             const getQuery = `
                 WITH jornadas_sumadas AS (
                     SELECT
@@ -261,6 +272,18 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
                     ${filtro.replace(/\bj\./g, 'j2.').replace(/\bq\./g, 'q2.')}
                     AND j2.id_ausencia IS NOT NULL
                     GROUP BY j2.id_empleado, ta.id, ta.nombre
+                ),
+                observaciones_agrupadas AS (
+                    SELECT
+                        j3.id_empleado,
+                        j3.fecha,
+                        o.texto
+                    FROM "jornada" j3
+                    ${join.replace(/\bj\./g, 'j3.')}
+                    ${parametros.quincena !== 0 ? 'JOIN quincena q3 ON j3.id_quincena = q3.id' : ''}
+                    JOIN "jornadaobservacion" jo ON j3.id = jo.id_jornada
+                    JOIN "observacion" o ON jo.id_observacion = o.id
+                    ${filtro.replace(/\bj\./g, 'j3.').replace(/\bq\./g, 'q3.')}
                 )
                 SELECT
                     js.legajo,
@@ -280,7 +303,20 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
                             )
                         ) FILTER (WHERE ac.id_tipoausencia IS NOT NULL),
                         '[]'::json
-                    ) as ausencias
+                    ) as ausencias,
+                    COALESCE(
+                        (
+                            SELECT json_agg(
+                                json_build_object(
+                                    'fecha', oa.fecha,
+                                    'texto', oa.texto
+                                ) ORDER BY oa.fecha DESC
+                            )
+                            FROM observaciones_agrupadas oa
+                            WHERE oa.id_empleado = js.id_empleado
+                        ),
+                        '[]'::json
+                    ) as observaciones
                 FROM jornadas_sumadas js
                 LEFT JOIN ausencias_conteo ac ON js.id_empleado = ac.id_empleado
                 GROUP BY js.id_empleado, js.legajo, js.empleado, js.suma_total, js.suma_total_normal, 

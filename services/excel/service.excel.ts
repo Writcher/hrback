@@ -762,6 +762,66 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
       ySplit: 1
     }];
 
+    // Crear hoja de observaciones
+    const observacionesSheet = workbook.addWorksheet('Observaciones');
+    observacionesSheet.getColumn(1).width = 15;
+    observacionesSheet.getColumn(2).width = 80;
+
+    resumenJornadas.forEach((resumen) => {
+      if (resumen.observaciones && resumen.observaciones.length > 0) {
+        // Agregar fila con nombre del empleado
+        const empleadoRow = observacionesSheet.addRow([resumen.empleado]);
+        empleadoRow.font = { bold: true, size: 12 };
+        empleadoRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '2F5597' }
+        };
+        empleadoRow.getCell(1).font = {
+          bold: true,
+          size: 12,
+          color: { argb: 'FFFFFF' }
+        };
+        empleadoRow.height = 25;
+        empleadoRow.alignment = { vertical: 'middle' };
+
+        // Agregar header de columnas
+        const headerRow = observacionesSheet.addRow(['Fecha', 'Observación']);
+        headerRow.font = { bold: true };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'D9E2F3' }
+        };
+        headerRow.height = 20;
+        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Agregar cada observación
+        resumen.observaciones.forEach((obs: any) => {
+          const obsRow = observacionesSheet.addRow([
+            obs.fecha,
+            obs.texto
+          ]);
+          obsRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+          obsRow.getCell(2).alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+          obsRow.height = 30;
+
+          // Aplicar bordes
+          obsRow.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'CCCCCC' } },
+              left: { style: 'thin', color: { argb: 'CCCCCC' } },
+              bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+              right: { style: 'thin', color: { argb: 'CCCCCC' } }
+            };
+          });
+        });
+
+        // Agregar fila vacía entre empleados
+        observacionesSheet.addRow([]);
+      }
+    });
+
     // Agregar información adicional en una hoja separada
     const infoSheet = workbook.addWorksheet('Información');
     infoSheet.addRow(['Reporte generado:', new Date().toLocaleString('es-AR')]);

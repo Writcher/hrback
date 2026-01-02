@@ -39,6 +39,10 @@ export type resumenJornadasExcel = {
         id: number,
         nombre: string,
         cantidad: number
+    }>,
+    observaciones: Array<{
+        fecha: string,
+        texto: string
     }>
 };
 
