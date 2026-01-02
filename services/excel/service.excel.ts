@@ -382,102 +382,102 @@ export async function createJornadas(parametros: jornadasParametros) { //voy por
 
       for (const [id_reloj, { nombre, registros, requiresManualReview }] of empleadosJornadas.empleadosJornada.entries()) {
 
-      let id_empleado: number;
+        let id_empleado: number;
 
-      const empleadoParametros = {
-        id_reloj: Number(id_reloj),
-        id_proyecto: id_proyecto,
-        id_tipoimportacion: id_tipoimportacion
-      };
-
-      const empleado = await getEmpleadoByRelojProyecto(empleadoParametros);
-
-      if (empleado.rowCount === 0) {
-
-        const insertEmpleadoParametros = {
+        const empleadoParametros = {
           id_reloj: Number(id_reloj),
           id_proyecto: id_proyecto,
-          legajo: null as number | null,
-          nombre: nombre,
-          id_tipoempleado: null as number | null,
+          id_tipoimportacion: id_tipoimportacion
         };
 
-        id_empleado = await insertEmpleado(insertEmpleadoParametros);
-      } else {
-        id_empleado = empleado.rows[0].id;
-      };
+        const empleado = await getEmpleadoByRelojProyecto(empleadoParametros);
 
-      const jornadasPorFecha: Map<string, Array<{ tipo: string; hora: string; orden: number }>> = new Map();
+        if (empleado.rowCount === 0) {
 
-      for (const { fecha, hora, tipo } of registros) {
-        if (!jornadasPorFecha.has(fecha)) {
-          jornadasPorFecha.set(fecha, []);
+          const insertEmpleadoParametros = {
+            id_reloj: Number(id_reloj),
+            id_proyecto: id_proyecto,
+            legajo: null as number | null,
+            nombre: nombre,
+            id_tipoempleado: null as number | null,
+          };
+
+          id_empleado = await insertEmpleado(insertEmpleadoParametros);
+        } else {
+          id_empleado = empleado.rows[0].id;
         };
 
-        const registrosFecha = jornadasPorFecha.get(fecha)!;
-        registrosFecha.push({
-          tipo: tipo,
-          hora: hora,
-          orden: registrosFecha.length
-        });
-      };
+        const jornadasPorFecha: Map<string, Array<{ tipo: string; hora: string; orden: number }>> = new Map();
 
-      for (const [fecha, registrosFecha] of jornadasPorFecha.entries()) {
+        for (const { fecha, hora, tipo } of registros) {
+          if (!jornadasPorFecha.has(fecha)) {
+            jornadasPorFecha.set(fecha, []);
+          };
 
-        const fechaObjeto = new Date(fecha + "T12:00:00");
-        const año = fechaObjeto.getFullYear();
-        const mes = fechaObjeto.getMonth() + 1;
-        const dia = fechaObjeto.getDate();
-        const quincena = dia <= 15 ? 1 : 2;
-
-        if (fechaMemoria.getFullYear() !== año || fechaMemoria.getMonth() + 1 !== mes || id_mes === 0 || id_quincena === 0 || quincenaMemoria !== quincena) {
-          fechaMemoria = fechaObjeto;
-          quincenaMemoria = quincena;
-
-          const ids = await getMesQuincena({ año, mes, quincena });
-
-          id_mes = ids.id_mes;
-          id_quincena = ids.id_quincena;
+          const registrosFecha = jornadasPorFecha.get(fecha)!;
+          registrosFecha.push({
+            tipo: tipo,
+            hora: hora,
+            orden: registrosFecha.length
+          });
         };
 
-        const jornadas = emparejarEntradaSalida(registrosFecha);
+        for (const [fecha, registrosFecha] of jornadasPorFecha.entries()) {
 
-        for (const jornada of jornadas) {
-          if (jornada.entrada || jornada.salida) {
+          const fechaObjeto = new Date(fecha + "T12:00:00");
+          const año = fechaObjeto.getFullYear();
+          const mes = fechaObjeto.getMonth() + 1;
+          const dia = fechaObjeto.getDate();
+          const quincena = dia <= 15 ? 1 : 2;
 
-            if (parametros.id_tipoimportacion === id_importacionProSoft){
-              
-              await deleteAbsenceProSoft({
+          if (fechaMemoria.getFullYear() !== año || fechaMemoria.getMonth() + 1 !== mes || id_mes === 0 || id_quincena === 0 || quincenaMemoria !== quincena) {
+            fechaMemoria = fechaObjeto;
+            quincenaMemoria = quincena;
+
+            const ids = await getMesQuincena({ año, mes, quincena });
+
+            id_mes = ids.id_mes;
+            id_quincena = ids.id_quincena;
+          };
+
+          const jornadas = emparejarEntradaSalida(registrosFecha);
+
+          for (const jornada of jornadas) {
+            if (jornada.entrada || jornada.salida) {
+
+              if (parametros.id_tipoimportacion === id_importacionProSoft) {
+
+                await deleteAbsenceProSoft({
+                  fecha: fecha,
+                  id_empleado: id_empleado
+                });
+              };
+
+              await insertJornada({
                 fecha: fecha,
-                id_empleado: id_empleado
+                entrada: jornada.entrada || null,
+                salida: jornada.salida || null,
+                id_empleado: id_empleado,
+                id_proyecto: id_proyecto,
+                id_mes: id_mes,
+                id_quincena: id_quincena,
+                id_tipojornada: id_tipojornada,
+                id_ausencia: null,
+                id_estadojornada: requiresManualReview ? jornada_revision : jornada_valida,
+                id_importacion: id_importacion,
+                id_fuentemarca: id_fuentemarca,
+                id_usuariocreacion: id_usuariocreacion,
               });
             };
-
-            await insertJornada({
-              fecha: fecha,
-              entrada: jornada.entrada || null,
-              salida: jornada.salida || null,
-              id_empleado: id_empleado,
-              id_proyecto: id_proyecto,
-              id_mes: id_mes,
-              id_quincena: id_quincena,
-              id_tipojornada: id_tipojornada,
-              id_ausencia: null,
-              id_estadojornada: requiresManualReview ? jornada_revision : jornada_valida,
-              id_importacion: id_importacion,
-              id_fuentemarca: id_fuentemarca,
-              id_usuariocreacion: id_usuariocreacion,
-            });
           };
         };
+
+        await recalculateJornadasEmpleado({ id_empleado: id_empleado });
+
+        contador++;
       };
 
-      await recalculateJornadasEmpleado({ id_empleado: id_empleado });
-
-      contador++;
-    };
-
-    return { id_importacion, completa }
+      return { id_importacion, completa }
     },
 
     parametros,
@@ -605,10 +605,10 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         fgColor: { argb: '2F5597' }
       };
       cell.border = {
-        top: { style: 'thin', color: { argb: '000000' } },
-        left: { style: 'thin', color: { argb: '000000' } },
-        bottom: { style: 'thin', color: { argb: '000000' } },
-        right: { style: 'thin', color: { argb: '000000' } }
+        top: { style: 'medium', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: 'CCCCCC' } },
+        bottom: { style: 'medium', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: 'CCCCCC' } }
       };
       cell.alignment = {
         horizontal: 'center',
@@ -638,9 +638,9 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
         // Aplicar bordes y formato
         row.eachCell((cell, colNumber) => {
           cell.border = {
-            top: { style: 'thin', color: { argb: 'CCCCCC' } },
+            top: { style: 'medium', color: { argb: 'CCCCCC' } },
             left: { style: 'thin', color: { argb: 'CCCCCC' } },
-            bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+            bottom: { style: 'medium', color: { argb: 'CCCCCC' } },
             right: { style: 'thin', color: { argb: 'CCCCCC' } }
           };
 
@@ -764,63 +764,84 @@ export async function generarExcel(resumenJornadas: resumenJornadasExcel[]) {
 
     // Crear hoja de observaciones
     const observacionesSheet = workbook.addWorksheet('Observaciones');
-    observacionesSheet.getColumn(1).width = 15;
-    observacionesSheet.getColumn(2).width = 80;
+    observacionesSheet.getColumn(1).width = 15; // Legajo
+    observacionesSheet.getColumn(2).width = 50; // Empleado
+    observacionesSheet.getColumn(3).width = 100; // Observaciones
 
+    // Agregar header de columnas al inicio
+    const mainHeaderRow = observacionesSheet.addRow(['Legajo', 'Empleado', 'Observaciones']);
+    mainHeaderRow.height = 25;
+    mainHeaderRow.eachCell((cell) => {
+      cell.font = {
+        bold: true,
+        color: { argb: 'FFFFFF' },
+        size: 11
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: '2F5597' }
+      };
+      cell.border = {
+        top: { style: 'medium', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: 'CCCCCC' } },
+        bottom: { style: 'medium', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: 'CCCCCC' } }
+      };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: true
+      };
+    });
+
+    // Agregar una fila por empleado con todas sus observaciones
     resumenJornadas.forEach((resumen) => {
       if (resumen.observaciones && resumen.observaciones.length > 0) {
-        // Agregar fila con nombre del empleado
-        const empleadoRow = observacionesSheet.addRow([resumen.empleado]);
-        empleadoRow.font = { bold: true, size: 12 };
-        empleadoRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: '2F5597' }
-        };
-        empleadoRow.getCell(1).font = {
-          bold: true,
-          size: 12,
-          color: { argb: 'FFFFFF' }
-        };
-        empleadoRow.height = 25;
-        empleadoRow.alignment = { vertical: 'middle' };
+        // Concatenar todas las observaciones con fecha
+        const observacionesTexto = resumen.observaciones
+          .map((obs: any) => `[${obs.fecha}] - ${obs.texto}`)
+          .join('\n');
 
-        // Agregar header de columnas
-        const headerRow = observacionesSheet.addRow(['Fecha', 'Observación']);
-        headerRow.font = { bold: true };
-        headerRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'D9E2F3' }
-        };
-        headerRow.height = 20;
-        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+        const obsRow = observacionesSheet.addRow([
+          resumen.legajo,
+          resumen.empleado,
+          observacionesTexto
+        ]);
 
-        // Agregar cada observación
-        resumen.observaciones.forEach((obs: any) => {
-          const obsRow = observacionesSheet.addRow([
-            obs.fecha,
-            obs.texto
-          ]);
-          obsRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
-          obsRow.getCell(2).alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
-          obsRow.height = 30;
+        obsRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+        obsRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+        obsRow.getCell(3).alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
 
-          // Aplicar bordes
-          obsRow.eachCell((cell) => {
-            cell.border = {
-              top: { style: 'thin', color: { argb: 'CCCCCC' } },
-              left: { style: 'thin', color: { argb: 'CCCCCC' } },
-              bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
-              right: { style: 'thin', color: { argb: 'CCCCCC' } }
-            };
-          });
+        // Altura dinámica basada en cantidad de observaciones
+        obsRow.height = Math.max(30, resumen.observaciones.length * 15);
+
+        // Aplicar bordes
+        obsRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'medium', color: { argb: 'CCCCCC' } },
+            left: { style: 'thin', color: { argb: 'CCCCCC' } },
+            bottom: { style: 'medium', color: { argb: 'CCCCCC' } },
+            right: { style: 'thin', color: { argb: 'CCCCCC' } }
+          };
         });
-
-        // Agregar fila vacía entre empleados
-        observacionesSheet.addRow([]);
       }
     });
+
+    // Aplicar filtros automáticos a la hoja de observaciones
+    const totalObservacionesRows = observacionesSheet.rowCount;
+    if (totalObservacionesRows > 1) {
+      observacionesSheet.autoFilter = {
+        from: 'A1',
+        to: `C${totalObservacionesRows}`
+      };
+
+      // Congelar la primera fila
+      observacionesSheet.views = [{
+        state: 'frozen',
+        ySplit: 1
+      }];
+    }
 
     // Agregar información adicional en una hoja separada
     const infoSheet = workbook.addWorksheet('Información');
