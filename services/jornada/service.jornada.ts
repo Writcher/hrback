@@ -715,7 +715,7 @@ export async function getJornadaAusencia(parametros: getJornadaAusenciaParametro
         parametros
     );
 };
-{ }
+
 export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParametros) {
     return executeQuery(
         'deleteAbsenceProSoft',
@@ -735,6 +735,10 @@ export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParam
             ]);
 
             if (getResult.rows.length > 0) {
+                console.log('Deleting:', {
+                    id_jornada: getResult.rows[0].id,
+                    id_ausencia: getResult.rows[0].id_ausencia
+                });
 
                 const deleteQuery = `
                     DELETE FROM ausencia 
@@ -745,17 +749,7 @@ export async function deleteAbsenceProSoft(parametros: deleteAbsenceProSoftParam
                     getResult.rows[0].id_ausencia
                 ]);
 
-                const deleteQuery1 = `
-                    DELETE FROM jornada 
-                    WHERE id = $1
-                `;
-
-                const deleteResult1 = await client.query(deleteQuery1, [
-                    getResult.rows[0].id
-                ]);
-
                 checkRowsAffected(deleteResult, 'Ausencia', { id: getResult.rows[0].id_ausencia });
-                checkRowsAffected(deleteResult1, 'Jornada', { id: getResult.rows[0].id });
             };
         },
 
