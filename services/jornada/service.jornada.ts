@@ -575,7 +575,7 @@ export async function createJornada(parametros: createJornadaParametros) {
 
                     const { id_mes: id_mes_i, id_quincena: id_quincena_i } = await getMesQuincena({
                         año: añoActual,
-                        mes: mesActual,
+                        mes: mesActual + 1,
                         quincena: quincenaActual,
                     });
 
