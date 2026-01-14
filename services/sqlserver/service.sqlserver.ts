@@ -145,14 +145,14 @@ export async function getAusentesProyecto(parametros: getAusentesParametros) {
             const proy = await getProyectoNomina({ id_proyecto: parametros.filtroProyecto });
 
             const getQuery = `
-                SELECT DISTINCT CAST(n.[dni] AS INT) AS [id_empleado]
+                SELECT DISTINCT CAST(n.[dni] AS BIGINT) AS [id_empleado]
                 FROM [control_de_accesos].[dbo].[nomina] n
                 WHERE 
                     (ingreso IS NULL OR GETDATE() >= ingreso)
                     AND (egreso IS NULL OR GETDATE() <= egreso)
                     AND n.[proyecto] = @1
                     AND n.[apellido] NOT LIKE '%GARIN ODRIOZOLA%'
-                    AND CAST(n.[dni] AS INT) NOT IN (
+                    AND CAST(n.[dni] AS BIGINT) NOT IN (
                         SELECT DISTINCT [id_empleado]
                         FROM [control_de_accesos].[dbo].[registros_acceso]
                         WHERE [fecha_acceso] = @2
@@ -181,7 +181,7 @@ export async function syncNomina() {
             const pool = await getConnection();
 
             const getQuery = `
-                SELECT DISTINCT CAST([dni] AS INT) AS [id_reloj], [legajo], [apellido], [nombre], [proyecto], [convenio]
+                SELECT DISTINCT CAST([dni] AS BIGINT) AS [id_reloj], [legajo], [apellido], [nombre], [proyecto], [convenio]
                 FROM [control_de_accesos].[dbo].[nomina]
                 WHERE 
                     (ingreso IS NULL OR GETDATE() >= ingreso)
