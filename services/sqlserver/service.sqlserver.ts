@@ -78,7 +78,7 @@ export async function getPresentesProyecto(parametros: getPresentesProyectoParam
 
             const getResult = await query.query(getQuery);
 
-            const ids_presentes = new Set(getResult.recordset.map(result => Number(result.id_empleado)));
+            const ids_presentes = new Set(getResult.recordset.map(result => String(result.id_empleado)));
 
             const empleados = await getEmpleadosAsistencia();
 
