@@ -232,13 +232,36 @@ export async function getJornadasResumen(parametros: getJornadasResumenParametro
             };
 
             if (parametros.proyecto !== 0) {
-                filtro += `
+                let proyectoFiltro = `
                     AND EXISTS (
                         SELECT 1
-                        FROM "jornada" jp
+                        FROM "jornada" jp`;
+                
+                // Add the same joins needed for time filtering
+                if (parametros.quincena !== 0) {
+                    proyectoFiltro += `
+                        JOIN quincena qp ON jp.id_quincena = qp.id`;
+                }
+                
+                proyectoFiltro += `
                         WHERE jp.id_empleado = j.id_empleado
-                        AND jp.id_proyecto = $${valoresBase.length + 1}
+                        AND jp.id_proyecto = $${valoresBase.length + 1}`;
+                
+                // Add time filters matching the main query
+                if (parametros.mes !== 0) {
+                    proyectoFiltro += `
+                        AND jp.id_mes = $${valoresBase.indexOf(parametros.mes) + 1}`;
+                }
+                
+                if (parametros.quincena !== 0) {
+                    proyectoFiltro += `
+                        AND qp.quincena = $${valoresBase.indexOf(parametros.quincena) + 1}`;
+                }
+                
+                proyectoFiltro += `
                     )`;
+                
+                filtro += proyectoFiltro;
                 valoresBase.push(parametros.proyecto);
             };
 
