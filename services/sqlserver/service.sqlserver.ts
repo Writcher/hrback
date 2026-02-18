@@ -419,7 +419,9 @@ export async function procesarMarcasEmpleados({ registros, id_proyecto }: { regi
             };
 
             // Requiere revisión si hay número impar de marcas
-            requiresManualReview = registrosFiltrados.length % 2 !== 0;
+            if (registrosFiltrados.length % 2 !== 0) {
+                requiresManualReview = true;
+            };
         };
 
         if (!requiresManualReview && !esEmpleadoNocturno && registrosProcesados.length >= 2) {
