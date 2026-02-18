@@ -1,6 +1,6 @@
 "use server"
 
-import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros, getProyectoEmpleadosNocturnosParametros, getAusentesParametros } from "@/lib/types/empleado";
+import { editEmpleadoParametros, getEmpleadosParametros, insertEmpleadoParametros, deactivateEmpleadoParametros, getEmpleadoByRelojProyectoParametros, getEmpleadoProyectoParametros, getAusentesParametros } from "@/lib/types/empleado";
 import { db } from "@vercel/postgres";
 import { getEstadoEmpleadoBaja, getEstadoEmpleadoActivo } from "../estadoempleado/service.estadoempleado";
 import { getTipoEmpleadoMensualizado } from "../tipoempleado/service.tipoempleado";
@@ -130,7 +130,7 @@ export async function getEmpleados(parametros: getEmpleadosParametros) {
             `;
 
             const countQuery = `
-                SELECT COUNT(*) AS total
+                SELECT COUNT(DISTINCT e.id) AS total
                 FROM empleado e
                 ${join}
                 ${filtro}
@@ -293,28 +293,24 @@ export async function getEmpleadoProyecto(parametros: getEmpleadoProyectoParamet
     );
 };//
 
-export async function getProyectoEmpleadosNocturnos(parametros: getProyectoEmpleadosNocturnosParametros) {
+export async function getEmpleadosNocturnos() {
     return executeQuery(
-        'getProyectoEmpleadosNocturnos',
+        'getEmpleadosNocturnos',
         async () => {
 
             const id_turno = await getTurnoNocturno();
 
             const getQuery = `
                 SELECT id_reloj FROM empleado
-                WHERE id_proyecto = $1 
-                    AND id_turno = $2
+                WHERE id_turno = $1
             `;
 
             const getResult = await client.query(getQuery, [
-                parametros.id_proyecto,
                 id_turno
             ]);
 
             return getResult.rows.map(row => String(row.id_reloj));
-        },
-
-        parametros
+        }
     );
 };//
 

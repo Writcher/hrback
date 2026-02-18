@@ -74,7 +74,3 @@ export type getEmpleadoByRelojProyectoParametros = {
 export type getEmpleadoProyectoParametros = {
     id: number,
 };
-
-export type getProyectoEmpleadosNocturnosParametros = {
-    id_proyecto: number;
-};

@@ -10,7 +10,7 @@ import { getEstadoJornadaRevision, getEstadoJornadaValida } from "../estadojorna
 import { getAñoByValor } from "../año/service.año";
 import { getMesByMes } from "../mes/service.mes";
 import { getQuincenaByMes } from "../quincena/service.quincena";
-import { getEmpleadoByRelojProyecto, getProyectoEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
+import { getEmpleadoByRelojProyecto, getEmpleadosNocturnos, insertEmpleado } from "../empleado/service.empleado";
 import { deleteAbsenceProSoft, insertJornada, recalculateJornadasEmpleado } from "../jornada/service.jornada";
 import { getFuenteMarcaControl } from "../fuentemarca/service.fuentemarca";
 import { getProyectoModalidadTrabajo } from "../proyecto/service.proyecto";
@@ -52,7 +52,7 @@ export async function processExcel({ buffer, id_proyecto }: { buffer: ArrayBuffe
 
   const modalidad_proyecto = await getProyectoModalidadTrabajo({ id_proyecto });
   const modalidad_corrido = await getModalidadTrabajoCorrido();
-  const empleadosNocturnosArray = await getProyectoEmpleadosNocturnos({ id_proyecto });
+  const empleadosNocturnosArray = await getEmpleadosNocturnos();
   const empleadosNocturnos = new Set(empleadosNocturnosArray);
 
   // Determinar si es modalidad corrido

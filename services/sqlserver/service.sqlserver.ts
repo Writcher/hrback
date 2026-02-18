@@ -3,7 +3,7 @@
 import { getConnection } from "@/config/sqlserver";
 import { getModalidadTrabajoCorrido } from "../modalidadtrabajo/service.modalidadtrabajo";
 import { getProyectoByNomina, getProyectoModalidadTrabajo, getProyectoNomina } from "../proyecto/service.proyecto";
-import { getAllEmpleados, getEmpleadosAsistencia, getProyectoEmpleadosNocturnos } from "../empleado/service.empleado";
+import { getAllEmpleados, getEmpleadosAsistencia, getEmpleadosNocturnos } from "../empleado/service.empleado";
 import ExcelJS from "exceljs";
 import { db, QueryResult } from "@vercel/postgres";
 import { EmpleadoJornada, getMarcasSQLServerParametros, getPresentesProyectoParametros, RegistroEmpleado, ResultadoProcesado } from "@/lib/types/sqlserver";
@@ -284,7 +284,7 @@ export async function procesarMarcasEmpleados({ registros, id_proyecto }: { regi
 
     const modalidad_proyecto = await getProyectoModalidadTrabajo({ id_proyecto });
     const modalidad_corrido = await getModalidadTrabajoCorrido();
-    const empleadosNocturnosArray = await getProyectoEmpleadosNocturnos({ id_proyecto });
+    const empleadosNocturnosArray = await getEmpleadosNocturnos();
     const empleadosNocturnos = new Set(empleadosNocturnosArray);
 
     const empleadosJornada = new Map<string, EmpleadoJornada>();
